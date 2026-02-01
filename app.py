@@ -82,6 +82,38 @@ def logout():
     session.pop('user', None)
     return redirect('/')
 
+@app.route('/admin')
+def admin():
+    user = session.get('user')
+    
+    # Enkel behörighetskontroll: Endast fredrikskonto@gmail.com får komma hit
+    if not user or user.get('email') != 'fredrikskonto@gmail.com':
+        flash('Du har inte behörighet till adminsidan.')
+        return redirect('/')
+    
+    # Hämta alla användare och räkna inloggningar
+    # Vi gör en enkel sats här, i större system skulle vi aggregera i SQL
+    all_users = User.query.all()
+    
+    users_data = []
+    for u in all_users:
+        login_count = LoginLog.query.filter_by(user_id=u.id).count()
+        last_login_entry = LoginLog.query.filter_by(user_id=u.id).order_by(LoginLog.timestamp.desc()).first()
+        last_login_time = last_login_entry.timestamp.strftime("%Y-%m-%d %H:%M") if last_login_entry else "Aldrig"
+        
+        users_data.append({
+            'name': u.name,
+            'email': u.email,
+            'picture': u.picture,
+            'login_count': login_count,
+            'last_login': last_login_time
+        })
+    
+    # Sortera på senaste inloggning
+    users_data.sort(key=lambda x: x['last_login'], reverse=True)
+    
+    return render_template('admin.html', users=users_data)
+
 @app.route('/convert', methods=['POST'])
 def convert():
     if not session.get('user'):

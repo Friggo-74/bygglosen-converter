@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="sv">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bygglösen Admin</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --text: #1e293b;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--background);
+            color: var(--text);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        h1 {
+            margin-top: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        th {
+            background-color: #f1f5f9;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background-color: #f8fafc;
+        }
+
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        .btn-secondary {
+            background: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h1>Admin Dashboard</h1>
+            <a href="/" class="btn btn-secondary">Tillbaka till start</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Användare</th>
+                    <th>Email</th>
+                    <th>Antal Inloggningar</th>
+                    <th>Senast Inloggad</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            {% if user.picture %}
+                            <img src="{{ user.picture }}" alt="" class="user-img">
+                            {% endif %}
+                            {{ user.name }}
+                        </div>
+                    </td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.login_count }}</td>
+                    <td>{{ user.last_login }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+
+</html>

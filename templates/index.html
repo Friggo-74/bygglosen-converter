@@ -101,7 +101,13 @@
         {% if user %}
         <div
             style="background: #e8f0fe; padding: 1rem; border-radius: 4px; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center;">
-            <span>Inloggad som: <strong>{{ user.name or user.email }}</strong></span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span>Inloggad som: <strong>{{ user.name or user.email }}</strong></span>
+                {% if user.email == 'fredrikskonto@gmail.com' %}
+                <a href="/admin"
+                    style="color: #2563eb; text-decoration: none; font-weight: bold; background: white; padding: 2px 8px; border-radius: 4px;">Admin</a>
+                {% endif %}
+            </div>
             <a href="/logout" style="color: #c00; text-decoration: none; font-weight: bold;">Logga ut</a>
         </div>
 
