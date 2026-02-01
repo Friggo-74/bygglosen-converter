@@ -1,0 +1,7 @@
+flask
+openpyxl
+flask
+openpyxl
+gunicorn
+Authlib
+requests

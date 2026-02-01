@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="sv">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bygglösen Konverterare</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #2c3e50;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        input[type="file"] {
+            display: block;
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .flash-messages {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background-color: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            color: #c00;
+        }
+
+        .hint {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Konvertera Bygglösen</h1>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for message in messages %}
+            <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if user %}
+        <div
+            style="background: #e8f0fe; padding: 1rem; border-radius: 4px; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center;">
+            <span>Inloggad som: <strong>{{ user.name or user.email }}</strong></span>
+            <a href="/logout" style="color: #c00; text-decoration: none; font-weight: bold;">Logga ut</a>
+        </div>
+
+        <form action="/convert" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="xml_files">Konteks XML-filer</label>
+                <input type="file" name="xml_files" id="xml_files" accept=".xml" multiple required>
+                <div class="hint">Ladda upp en eller flera Lonegranskning XML-filer.</div>
+            </div>
+
+            <div class="form-group">
+                <label for="csv_file">Person/Län CSV-fil</label>
+                <input type="file" name="csv_file" id="csv_file" accept=".csv" required>
+                <div class="hint">Ladda upp CSV med 'Personnr' och 'Län och kommun'.</div>
+            </div>
+
+            <button type="submit">Konvertera och Ladda Ner</button>
+        </form>
+        {% else %}
+        <div style="text-align: center; padding: 2rem;">
+            <p style="margin-bottom: 2rem; color: #666;">Du måste logga in för att använda verktyget.</p>
+            <a href="/login">
+                <button
+                    style="background-color: #4285F4; display: flex; align-items: center; justify-content: center; margin: 0 auto; max-width: 250px;">
+                    <span style="margin-right: 10px;">G</span> Logga in med Google
+                </button>
+            </a>
+            <p style="margin-top: 2rem; font-size: 0.8rem; color: #999;">
+                Konfigurationskrav: GOOGLE_CLIENT_ID och GOOGLE_CLIENT_SECRET
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+
+</html>
