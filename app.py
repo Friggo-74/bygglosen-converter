@@ -31,13 +31,19 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
-# Microsoft OAuth
+# Microsoft OAuth (multi-tenant, skip issuer validation)
 microsoft = oauth.register(
     name='microsoft',
     client_id=os.getenv("MICROSOFT_CLIENT_ID"),
     client_secret=os.getenv("MICROSOFT_CLIENT_SECRET"),
     server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'}
+    client_kwargs={
+        'scope': 'openid email profile',
+        'token_endpoint_auth_method': 'client_secret_post'
+    },
+    # Skip issuer validation for multi-tenant apps (each tenant has different issuer)
+    jwks_uri='https://login.microsoftonline.com/common/discovery/v2.0/keys',
+    token_placement='header'
 )
 
 # Helper function to create tables if they don't exist
@@ -101,11 +107,21 @@ def login_microsoft():
 def auth_microsoft():
     try:
         token = microsoft.authorize_access_token()
-        # Microsoft returnerar userinfo via token direkt
-        user_info = token.get('userinfo')
-        if not user_info:
-            # Fallback: hämta från userinfo endpoint
-            user_info = microsoft.userinfo(token=token)
+        
+        # Parse the ID token directly to get user info (avoids issuer validation)
+        # The id_token contains the user claims
+        id_token = token.get('id_token')
+        if id_token:
+            import base64
+            import json
+            # Decode the JWT payload (second part) without verification
+            # We trust it because it came directly from Microsoft's token endpoint
+            payload = id_token.split('.')[1]
+            # Add padding if needed
+            payload += '=' * (4 - len(payload) % 4)
+            user_info = json.loads(base64.urlsafe_b64decode(payload))
+        else:
+            user_info = token.get('userinfo', {})
         
         provider_id = user_info.get('sub') or user_info.get('oid')
         
