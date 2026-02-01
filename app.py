@@ -49,12 +49,15 @@ def auth():
         token = google.authorize_access_token()
         user_info = google.userinfo(token=token)
         
+        # OpenID Connect använder 'sub' (subject) som unik identifierare, inte 'id'
+        google_id = user_info.get('sub') or user_info.get('id')
+        
         # Spara eller uppdatera användaren i databasen
-        existing_user = User.query.filter_by(google_id=user_info['id']).first()
+        existing_user = User.query.filter_by(google_id=google_id).first()
         
         if not existing_user:
             existing_user = User(
-                google_id=user_info['id'],
+                google_id=google_id,
                 email=user_info['email'],
                 name=user_info.get('name'),
                 picture=user_info.get('picture')
@@ -71,7 +74,7 @@ def auth():
         db.session.commit()
 
         # Spara i sessionen
-        session['user'] = user_info
+        session['user'] = dict(user_info)
         return redirect('/')
     except Exception as e:
         flash(f'Inloggning misslyckades: {str(e)}')
