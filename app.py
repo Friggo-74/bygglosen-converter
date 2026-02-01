@@ -32,18 +32,19 @@ google = oauth.register(
 )
 
 # Microsoft OAuth (multi-tenant, skip issuer validation)
+# For multi-tenant apps using /common, the issuer varies per tenant
+# so we must skip issuer validation
 microsoft = oauth.register(
     name='microsoft',
     client_id=os.getenv("MICROSOFT_CLIENT_ID"),
     client_secret=os.getenv("MICROSOFT_CLIENT_SECRET"),
-    server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
+    authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    jwks_uri='https://login.microsoftonline.com/common/discovery/v2.0/keys',
     client_kwargs={
         'scope': 'openid email profile',
         'token_endpoint_auth_method': 'client_secret_post'
-    },
-    # Skip issuer validation for multi-tenant apps (each tenant has different issuer)
-    jwks_uri='https://login.microsoftonline.com/common/discovery/v2.0/keys',
-    token_placement='header'
+    }
 )
 
 # Helper function to create tables if they don't exist
@@ -106,16 +107,19 @@ def login_microsoft():
 @app.route('/auth/microsoft')
 def auth_microsoft():
     try:
-        token = microsoft.authorize_access_token()
+        # Use fetch_access_token with claims_options to skip issuer validation
+        # This is needed for multi-tenant Azure apps where issuer varies
+        token = microsoft.authorize_access_token(claims_options={
+            'iss': {'essential': False},  # Skip issuer validation
+            'aud': {'essential': True}
+        })
         
-        # Parse the ID token directly to get user info (avoids issuer validation)
-        # The id_token contains the user claims
+        # Parse the ID token directly to get user info
         id_token = token.get('id_token')
         if id_token:
             import base64
             import json
             # Decode the JWT payload (second part) without verification
-            # We trust it because it came directly from Microsoft's token endpoint
             payload = id_token.split('.')[1]
             # Add padding if needed
             payload += '=' * (4 - len(payload) % 4)
