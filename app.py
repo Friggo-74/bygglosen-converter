@@ -12,7 +12,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')  # Use env var or default
-app.config['SESSION_COOKIE_NAME'] = 'google-login-session'
+app.config['SESSION_COOKIE_NAME'] = 'bygglosen-session'
 
 # --- Database Config ---
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///app.db')
@@ -21,11 +21,22 @@ db.init_app(app)
 
 # --- OAuth Config ---
 oauth = OAuth(app)
+
+# Google OAuth
 google = oauth.register(
     name='google',
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
+
+# Microsoft OAuth
+microsoft = oauth.register(
+    name='microsoft',
+    client_id=os.getenv("MICROSOFT_CLIENT_ID"),
+    client_secret=os.getenv("MICROSOFT_CLIENT_SECRET"),
+    server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
     client_kwargs={'scope': 'openid email profile'}
 )
 
@@ -38,33 +49,33 @@ def index():
     user = session.get('user')
     return render_template('index.html', user=user)
 
-@app.route('/login')
-def login():
-    redirect_uri = url_for('auth', _external=True)
+# --- Google Login ---
+@app.route('/login/google')
+def login_google():
+    redirect_uri = url_for('auth_google', _external=True)
     return google.authorize_redirect(redirect_uri)
 
-@app.route('/auth')
-def auth():
+@app.route('/auth/google')
+def auth_google():
     try:
         token = google.authorize_access_token()
         user_info = google.userinfo(token=token)
         
-        # OpenID Connect använder 'sub' (subject) som unik identifierare, inte 'id'
-        google_id = user_info.get('sub') or user_info.get('id')
+        # OpenID Connect använder 'sub' (subject) som unik identifierare
+        provider_id = user_info.get('sub') or user_info.get('id')
         
         # Spara eller uppdatera användaren i databasen
-        existing_user = User.query.filter_by(google_id=google_id).first()
+        existing_user = User.query.filter_by(google_id=provider_id).first()
         
         if not existing_user:
             existing_user = User(
-                google_id=google_id,
+                google_id=provider_id,
                 email=user_info['email'],
                 name=user_info.get('name'),
                 picture=user_info.get('picture')
             )
             db.session.add(existing_user)
         else:
-            # Uppdatera info om det ändrats (t.ex. bild eller namn)
             existing_user.name = user_info.get('name')
             existing_user.picture = user_info.get('picture')
         
@@ -77,7 +88,52 @@ def auth():
         session['user'] = dict(user_info)
         return redirect('/')
     except Exception as e:
-        flash(f'Inloggning misslyckades: {str(e)}')
+        flash(f'Google-inloggning misslyckades: {str(e)}')
+        return redirect('/')
+
+# --- Microsoft Login ---
+@app.route('/login/microsoft')
+def login_microsoft():
+    redirect_uri = url_for('auth_microsoft', _external=True)
+    return microsoft.authorize_redirect(redirect_uri)
+
+@app.route('/auth/microsoft')
+def auth_microsoft():
+    try:
+        token = microsoft.authorize_access_token()
+        # Microsoft returnerar userinfo via token direkt
+        user_info = token.get('userinfo')
+        if not user_info:
+            # Fallback: hämta från userinfo endpoint
+            user_info = microsoft.userinfo(token=token)
+        
+        provider_id = user_info.get('sub') or user_info.get('oid')
+        
+        # Spara eller uppdatera användaren i databasen
+        existing_user = User.query.filter_by(google_id=provider_id).first()
+        
+        if not existing_user:
+            existing_user = User(
+                google_id=provider_id,  # Återanvänder samma fält för enkelhetens skull
+                email=user_info['email'],
+                name=user_info.get('name'),
+                picture=user_info.get('picture')
+            )
+            db.session.add(existing_user)
+        else:
+            existing_user.name = user_info.get('name')
+            existing_user.picture = user_info.get('picture')
+        
+        # Logga inloggningstillfället
+        log_entry = LoginLog(user=existing_user)
+        db.session.add(log_entry)
+        db.session.commit()
+
+        # Spara i sessionen
+        session['user'] = dict(user_info)
+        return redirect('/')
+    except Exception as e:
+        flash(f'Microsoft-inloggning misslyckades: {str(e)}')
         return redirect('/')
 
 @app.route('/logout')
