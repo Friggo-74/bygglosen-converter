@@ -173,6 +173,7 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         'Rolltillagg', 'Aktivitetstillagg', 'Kompetenstillagg', 
         'Ansvarstillagg'
     ]
+    fields_to_max = ['Fordelningstal']
     
     merged_persons_map = {}
     
@@ -189,23 +190,59 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
             
             # Summera fälten
             for field in fields_to_sum:
-                # Hitta elementen
                 elem_exist = existing_person.find(field)
                 elem_new = person.find(field)
                 
-                # Om båda finns, addera
-                if elem_exist is not None and elem_new is not None:
-                    try:
-                        val1 = float(elem_exist.text or 0)
-                        val2 = float(elem_new.text or 0)
-                        elem_exist.text = "{:.2f}".format(val1 + val2)
-                    except ValueError:
-                        pass # Om det inte är tal, strunta i det
-                # Om fält saknas i "existing" men finns i "new", borde vi kopiera det?
-                # För enkelhetens skull antar vi att strukturen är konstant (samma schema).
-                # Om vi vill kopiera måste vi använda copy/append, men XML strukturen är strikt.
+                if elem_new is not None:
+                    if elem_exist is not None:
+                        try:
+                            val1 = float(elem_exist.text or 0)
+                            val2 = float(elem_new.text or 0)
+                            elem_exist.text = "{:.2f}".format(val1 + val2)
+                        except ValueError:
+                            pass
+                    else:
+                        # Om fältet saknas i den första personen men finns i den nya, lägg till det
+                        new_elem = ET.SubElement(existing_person, field)
+                        new_elem.text = elem_new.text
+
+            # Hantera fält som ska vara MAX (t.ex. Fordelningstal)
+            for field in fields_to_max:
+                elem_exist = existing_person.find(field)
+                elem_new = person.find(field)
+                
+                if elem_new is not None:
+                    if elem_exist is not None:
+                        try:
+                            val1 = float(elem_exist.text or 0)
+                            val2 = float(elem_new.text or 0)
+                            max_val = max(val1, val2)
+                            if field == 'Fordelningstal':
+                                elem_exist.text = str(int(max_val))
+                            else:
+                                elem_exist.text = "{:.2f}".format(max_val)
+                        except ValueError:
+                            pass
+                    else:
+                        # Lägg till fältet om det saknas, formatera som heltal om Fordelningstal
+                        new_elem = ET.SubElement(existing_person, field)
+                        if field == 'Fordelningstal':
+                            try:
+                                new_elem.text = str(int(float(elem_new.text or 0)))
+                            except ValueError:
+                                new_elem.text = elem_new.text
+                        else:
+                            new_elem.text = elem_new.text
         else:
+            # Första gången vi ser personen, spara den
             merged_persons_map[clean_pnr] = person
+            # Säkra att Fordelningstal är heltal även här
+            ft_elem = person.find('Fordelningstal')
+            if ft_elem is not None:
+                try:
+                    ft_elem.text = str(int(float(ft_elem.text or 0)))
+                except ValueError:
+                    pass
             
     # Uppdatera listan med unika personer
     unique_persons = list(merged_persons_map.values())
