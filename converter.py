@@ -47,70 +47,71 @@ def load_lankod_map(excel_path='kommunlankod-2026.xlsx'):
         
     return lankod_map
 
-def convert_bygglosen_data(xml_file_streams, csv_file_stream, default_lankod="1293"):
+def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293"):
     """
     Konverterar data från XML och CSV streams.
     xml_file_streams: list of file-like objects (binary or text depending on parsing needs)
-    csv_file_stream: file-like object (text mode preferable)
+    csv_file_stream: file-like object (text mode preferable) - OPTIONAL
+    
+    Om csv_file_stream är None, används länkoderna som redan finns i XML-filerna.
     """
     
     # Ladda upp länskods-mappning en gång
     # I en riktig prod-app borde detta cachas, men här är det ok
     lankod_namn_map = load_lankod_map()
     
-    # 1. Läs in CSV-filen till en dictionary
+    # 1. Läs in CSV-filen till en dictionary (om den finns)
     # Mappar Personnummer -> LänKod
     pnr_to_lankod = {}
     
-    # Flask skickar ofta BytesIO, vi behöver text för csv module
-    # Vi försöker först med utf-8-sig, men faller tillbaka på iso-8859-1 (vanligt för svenska Excel-filer)
-    encodings_to_try = ['utf-8-sig', 'iso-8859-1', 'cp1252']
-    csv_rows = []
-    
-    # Spara positionen så vi kan spola tillbaka om första försöket misslyckas
-    start_pos = csv_file_stream.tell()
-    
-    success = False
-    for encoding in encodings_to_try:
-        try:
-            csv_file_stream.seek(start_pos)
-            wrapper = io.TextIOWrapper(csv_file_stream, encoding=encoding, newline='')
-            # Läs allt till en lista för att faktiskt trigga en eventuell decode error direkt
-            data = wrapper.read()
-            
-            # Om vi lyckas läsa, skapa en ny reader från strängen
-            wrapper.detach() # Viktigt: stäng inte underliggande bytes-stream
-            
-            # Använd io.StringIO för att mata csv.DictReader
-            reader = csv.DictReader(io.StringIO(data), delimiter=';')
-            csv_rows = list(reader) # Spara rader
-            success = True
-            break
-        except UnicodeDecodeError:
-            # Om wrapper craschar detachar vi ändå för att inte stänga streamen i finally (om vi hade haft en)
-            # Men här i loopen, om TextIOWrapper failar vid init/read, måste vi se till att den inte stänger filen vid GC/exit
-            if 'wrapper' in locals():
-                try:
-                    wrapper.detach()
-                except Exception:
-                    pass
-            continue
-            
-    if not success:
-         raise ValueError("Kunde inte läsa CSV-filen. Kontrollera att den är sparad som UTF-8 eller ISO-8859-1.")
+    # Endast processa CSV om den faktiskt skickades med
+    if csv_file_stream is not None:
+        # Flask skickar ofta BytesIO, vi behöver text för csv module
+        # Vi försöker först med utf-8-sig, men faller tillbaka på iso-8859-1 (vanligt för svenska Excel-filer)
+        encodings_to_try = ['utf-8-sig', 'iso-8859-1', 'cp1252']
+        csv_rows = []
+        
+        # Spara positionen så vi kan spola tillbaka om första försöket misslyckas
+        start_pos = csv_file_stream.tell()
+        
+        success = False
+        for encoding in encodings_to_try:
+            try:
+                csv_file_stream.seek(start_pos)
+                wrapper = io.TextIOWrapper(csv_file_stream, encoding=encoding, newline='')
+                # Läs allt till en lista för att faktiskt trigga en eventuell decode error direkt
+                data = wrapper.read()
+                
+                # Om vi lyckas läsa, skapa en ny reader från strängen
+                wrapper.detach() # Viktigt: stäng inte underliggande bytes-stream
+                
+                # Använd io.StringIO för att mata csv.DictReader
+                reader = csv.DictReader(io.StringIO(data), delimiter=';')
+                csv_rows = list(reader) # Spara rader
+                success = True
+                break
+            except UnicodeDecodeError:
+                # Om wrapper craschar detachar vi ändå för att inte stänga streamen i finally (om vi hade haft en)
+                if 'wrapper' in locals():
+                    try:
+                        wrapper.detach()
+                    except Exception:
+                        pass
+                continue
+                
+        if not success:
+             raise ValueError("Kunde inte läsa CSV-filen. Kontrollera att den är sparad som UTF-8 eller ISO-8859-1.")
 
-    for row in csv_rows:
-        # Hantera fall där CSV kanske har andra kolumnnamn eller whitespace
-        pnr_raw = row.get('Personnr', '')
-        lankod_raw = row.get('Län och kommun', '')
-        
-        pnr = clean_personnr(pnr_raw)
-        lankod = pad_lankod(lankod_raw)
-        
-        if pnr and lankod:
-            pnr_to_lankod[pnr] = lankod
+        for row in csv_rows:
+            # Hantera fall där CSV kanske har andra kolumnnamn eller whitespace
+            pnr_raw = row.get('Personnr', '')
+            lankod_raw = row.get('Län och kommun', '')
             
-    # Vi behöver inte längre wrapper.detach() här nere eftersom vi gjorde det i loopen 
+            pnr = clean_personnr(pnr_raw)
+            lankod = pad_lankod(lankod_raw)
+            
+            if pnr and lankod:
+                pnr_to_lankod[pnr] = lankod
 
     # 2. Parsa XML-filerna (Konteks filer)
     # Vi itererar över alla filer och samlar personer
@@ -144,10 +145,16 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream, default_lankod="12
                     'Postort': original_group.findtext('Postort') or ""
                 }
             
+            # Hämta länkod för denna fil (används som fallback om ingen CSV finns)
+            file_lankod = original_group.findtext('LanOchKommun')
+            
             # Hämta personer
             all_persons_container = original_group.find('Personer')
             if all_persons_container is not None:
                 persons = all_persons_container.findall('Person')
+                # Spara original länkod med varje person (som ett attribut för enkel åtkomst)
+                for p in persons:
+                    p.set('_original_lankod', file_lankod or '')
                 all_persons_collected.extend(persons)
                 
         except Exception as e:
@@ -203,15 +210,27 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream, default_lankod="12
     # Uppdatera listan med unika personer
     unique_persons = list(merged_persons_map.values())
 
-    # 4. Gruppera personer baserat på CSV-datan
+    # 4. Gruppera personer baserat på CSV-datan (om den finns) eller befintlig XML-data
     # Dictionary structure: { "0581": [PersonElement1, PersonElement2], "1293": [...] }
     grouped_persons = defaultdict(list)
     
     for person in unique_persons:
         pnr_xml = person.findtext('Personnummer')
+        clean_pnr = clean_personnr(pnr_xml)
         
-        # Hitta rätt länkod, annars använd default (Hässleholm 1293)
-        target_kod = pnr_to_lankod.get(clean_personnr(pnr_xml), default_lankod)
+        # Prioritetsordning:
+        # 1. CSV-mappning (om tillgänglig)
+        # 2. Befintlig LanOchKommun i XML-filen
+        # 3. Default länkod
+        if clean_pnr in pnr_to_lankod:
+            target_kod = pnr_to_lankod[clean_pnr]
+        else:
+            # Försök hämta från XML:en (personelementet eller root)
+            existing_lankod = person.findtext('LanOchKommun')
+            if existing_lankod:
+                target_kod = pad_lankod(existing_lankod)
+            else:
+                target_kod = default_lankod
         
         # Lägg till personen i rätt lista
         grouped_persons[target_kod].append(person)

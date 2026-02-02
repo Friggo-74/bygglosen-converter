@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,6 +14,8 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')  # Use env var or default
 app.config['SESSION_COOKIE_NAME'] = 'bygglosen-session'
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # --- Database Config ---
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///app.db')
@@ -68,30 +71,36 @@ def auth_google():
         token = google.authorize_access_token()
         user_info = google.userinfo(token=token)
         
-        # OpenID Connect använder 'sub' (subject) som unik identifierare
-        provider_id = user_info.get('sub') or user_info.get('id')
+        provider_id = str(user_info.get('sub') or user_info.get('id'))
+        email = user_info.get('email')
         
-        # Spara eller uppdatera användaren i databasen
+        # 1. Försök hitta på Google ID
         existing_user = User.query.filter_by(google_id=provider_id).first()
         
+        # 2. Om inte hittad, försök hitta på e-post (kontolänkning)
+        if not existing_user and email:
+            existing_user = User.query.filter_by(email=email).first()
+            if existing_user:
+                existing_user.google_id = provider_id
+        
+        # 3. Om fortfarande inte hittad, skapa ny
         if not existing_user:
             existing_user = User(
                 google_id=provider_id,
-                email=user_info['email'],
+                email=email,
                 name=user_info.get('name'),
                 picture=user_info.get('picture')
             )
             db.session.add(existing_user)
         else:
+            # Uppdatera info
             existing_user.name = user_info.get('name')
             existing_user.picture = user_info.get('picture')
         
-        # Logga inloggningstillfället
         log_entry = LoginLog(user=existing_user)
         db.session.add(log_entry)
         db.session.commit()
 
-        # Spara i sessionen
         session['user'] = dict(user_info)
         return redirect('/')
     except Exception as e:
@@ -107,49 +116,55 @@ def login_microsoft():
 @app.route('/auth/microsoft')
 def auth_microsoft():
     try:
-        # Use fetch_access_token with claims_options to skip issuer validation
-        # This is needed for multi-tenant Azure apps where issuer varies
         token = microsoft.authorize_access_token(claims_options={
-            'iss': {'essential': False},  # Skip issuer validation
+            'iss': {'essential': False},
             'aud': {'essential': True}
         })
         
-        # Parse the ID token directly to get user info
         id_token = token.get('id_token')
         if id_token:
             import base64
             import json
-            # Decode the JWT payload (second part) without verification
             payload = id_token.split('.')[1]
-            # Add padding if needed
             payload += '=' * (4 - len(payload) % 4)
             user_info = json.loads(base64.urlsafe_b64decode(payload))
         else:
             user_info = token.get('userinfo', {})
         
-        provider_id = user_info.get('sub') or user_info.get('oid')
+        provider_id = str(user_info.get('sub') or user_info.get('oid'))
+        email = user_info.get('email') or user_info.get('preferred_username')
         
-        # Spara eller uppdatera användaren i databasen
-        existing_user = User.query.filter_by(google_id=provider_id).first()
+        # 1. Försök hitta på Microsoft ID
+        existing_user = User.query.filter_by(microsoft_id=provider_id).first()
         
+        # 2. Om inte hittad, försök hitta på e-post (kontolänkning)
+        if not existing_user and email:
+            existing_user = User.query.filter_by(email=email).first()
+            if existing_user:
+                existing_user.microsoft_id = provider_id
+        
+        # 3. Om fortfarande inte hittad, skapa ny
         if not existing_user:
             existing_user = User(
-                google_id=provider_id,  # Återanvänder samma fält för enkelhetens skull
-                email=user_info['email'],
+                microsoft_id=provider_id,
+                email=email,
                 name=user_info.get('name'),
                 picture=user_info.get('picture')
             )
             db.session.add(existing_user)
         else:
+            # Uppdatera info
             existing_user.name = user_info.get('name')
             existing_user.picture = user_info.get('picture')
         
-        # Logga inloggningstillfället
         log_entry = LoginLog(user=existing_user)
         db.session.add(log_entry)
         db.session.commit()
 
-        # Spara i sessionen
+        # Normalisera user_info för sessionen (så sessionen ser likadan ut oavsett provider om möjligt)
+        if 'email' not in user_info and 'preferred_username' in user_info:
+            user_info['email'] = user_info['preferred_username']
+
         session['user'] = dict(user_info)
         return redirect('/')
     except Exception as e:
@@ -202,31 +217,33 @@ def convert():
     xml_files = request.files.getlist('xml_files')
     csv_file = request.files.get('csv_file')
     
-    if not xml_files or not csv_file:
-        flash('Både XML och CSV måste laddas upp.')
+    # XML files are required
+    if not xml_files or all(f.filename == '' for f in xml_files):
+        flash('Du måste ladda upp minst en XML-fil.')
         return redirect('/')
-        
-    if any(f.filename == '' for f in xml_files) or csv_file.filename == '':
-        flash('Ingen fil vald.')
-        return redirect('/')
-        
-    if xml_files and csv_file:
-        try:
-            xml_streams = [f.stream for f in xml_files]
-            result_stream = convert_bygglosen_data(xml_streams, csv_file.stream)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"LOSEN_konverterad_{timestamp}.xml"
-            return send_file(
-                result_stream,
-                as_attachment=True,
-                download_name=filename,
-                mimetype='application/xml'
-            )
-        except Exception as e:
-            flash(f'Ett fel uppstod vid konvertering: {str(e)}')
-            return redirect('/')
     
-    return redirect('/')
+    # Filter out empty file inputs
+    xml_files = [f for f in xml_files if f.filename != '']
+    
+    # CSV is optional - check if provided and has content
+    csv_stream = None
+    if csv_file and csv_file.filename != '':
+        csv_stream = csv_file.stream
+        
+    try:
+        xml_streams = [f.stream for f in xml_files]
+        result_stream = convert_bygglosen_data(xml_streams, csv_stream)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"LOSEN_konverterad_{timestamp}.xml"
+        return send_file(
+            result_stream,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/xml'
+        )
+    except Exception as e:
+        flash(f'Ett fel uppstod vid konvertering: {str(e)}')
+        return redirect('/')
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -112,6 +112,16 @@
         </div>
 
         <form action="/convert" method="post" enctype="multipart/form-data">
+            <!-- Privacy notice -->
+            <div
+                style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 12px; margin-bottom: 1.5rem;">
+                <p style="margin: 0; font-size: 0.9rem; color: #166534;">
+                    <strong>Din data är din</strong><br>
+                    Filerna du laddar upp bearbetas direkt och raderas omedelbart efteråt. Ingen information sparas på
+                    servern.
+                </p>
+            </div>
+
             <div class="form-group">
                 <label for="xml_files">Konteks XML-filer</label>
                 <input type="file" name="xml_files" id="xml_files" accept=".xml" multiple required>
@@ -119,16 +129,28 @@
             </div>
 
             <div class="form-group">
-                <label for="csv_file">Person/Län CSV-fil</label>
-                <input type="file" name="csv_file" id="csv_file" accept=".csv" required>
-                <div class="hint">Ladda upp CSV med 'Personnr' och 'Län och kommun'.</div>
+                <label for="csv_file">Person/Län CSV-fil <span
+                        style="color: #999; font-weight: normal;">(valfritt)</span></label>
+                <input type="file" name="csv_file" id="csv_file" accept=".csv">
+                <div class="hint">Ladda upp CSV med 'Personnr' och 'Län och kommun'. Om du hoppar över denna används
+                    uppgifterna som redan finns i XML-filerna.</div>
             </div>
 
             <button type="submit">Konvertera och Ladda Ner</button>
         </form>
         {% else %}
         <div style="text-align: center; padding: 2rem;">
-            <p style="margin-bottom: 2rem; color: #666;">Du måste logga in för att använda verktyget.</p>
+            <p style="margin-bottom: 1rem; color: #666;">Du måste logga in för att använda verktyget.</p>
+
+            <!-- Security notice -->
+            <div
+                style="background: #eff6ff; border: 1px solid #93c5fd; border-radius: 6px; padding: 12px; margin-bottom: 1.5rem; text-align: left; max-width: 320px; margin-left: auto; margin-right: auto;">
+                <p style="margin: 0; font-size: 0.85rem; color: #1e40af;">
+                    <strong>Säker inloggning</strong><br>
+                    Du loggar in via Google eller Microsoft – vi får aldrig tillgång till ditt lösenord. Använd ditt
+                    jobbkonto eller ett privat konto, det som passar dig bäst.
+                </p>
+            </div>
 
             <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
                 <!-- Google Login -->
