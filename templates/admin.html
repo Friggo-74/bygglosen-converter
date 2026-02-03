@@ -207,8 +207,9 @@
                     <td>{{ user.last_login }}</td>
                     <td>
                         <div class="actions">
-                            <button class="btn btn-secondary btn-sm"
-                                onclick="editUser({{ user | tojson }})">Redigera</button>
+                            <button class="btn btn-secondary btn-sm" data-user-id="{{ user.id }}"
+                                data-first-name="{{ user.first_name }}" data-last-name="{{ user.last_name }}"
+                                data-company="{{ user.company }}" onclick="editUser(this)">Redigera</button>
                             <form action="{{ url_for('admin_reset_user', user_id=user.id) }}" method="POST"
                                 onsubmit="return confirm('Är du säker på att du vill ta bort användarens registrering? De kommer behöva registrera sig igen vid nästa besök.')">
                                 <button type="submit" class="btn btn-danger btn-sm">Ta bort</button>
@@ -253,11 +254,16 @@
         const modal = document.getElementById('editModal');
         const form = document.getElementById('editForm');
 
-        function editUser(user) {
-            form.action = `/admin/user/${user.id}/update`;
-            document.getElementById('edit_first_name').value = user.first_name || '';
-            document.getElementById('edit_last_name').value = user.last_name || '';
-            document.getElementById('edit_company').value = user.company !== '-' ? user.company : '';
+        function editUser(btn) {
+            const id = btn.getAttribute('data-user-id');
+            const firstName = btn.getAttribute('data-first-name');
+            const lastName = btn.getAttribute('data-last-name');
+            const company = btn.getAttribute('data-company');
+
+            form.action = `/admin/user/${id}/update`;
+            document.getElementById('edit_first_name').value = firstName || '';
+            document.getElementById('edit_last_name').value = lastName || '';
+            document.getElementById('edit_company').value = company !== '-' ? company : '';
             modal.style.display = 'block';
         }
 
