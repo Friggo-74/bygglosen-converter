@@ -5,10 +5,11 @@ import io
 def generate_dummy_files():
     # Create a dummy CSV based on the new structure:
     # Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
-    csv_content = """Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
-1;Anders Andersson;0662;19900101-1234;123;100;
-2;Bertil Bengtsson;1280;19920202-5678;456;80;
-3;Cecilia Carlsson;1293;19800101-9999;789;50;
+    # Testing robust header matching (mixed case/spaces) and 10-digit PNRs
+    csv_content = """Anst.id; Namn ; länkOD ; personnummer ; YRKESKOD ; fördelningstal ;
+1;Anders Andersson;0662;900101-1234;123;100;
+2;Bertil Bengtsson;1280;920202-5678;456;80;
+3;Cecilia Carlsson;1293;800101-9999;789;50;
 """
     
     # Create a dummy XML (Konteks-like structure)

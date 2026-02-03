@@ -4,10 +4,14 @@ import io
 from collections import defaultdict
 
 def clean_personnr(pnr):
-    """Tar bort bindestreck för att matcha XML-formatet."""
+    """Tar bort bindestreck och returnerar de sista 10 siffrorna för robust matchning."""
     if not pnr:
         return ""
-    return pnr.replace("-", "").strip()
+    p = pnr.replace("-", "").strip()
+    # Vi sparar bara de sista 10 siffrorna för att matcha oavsett om XML/CSV har sekel (19/20) eller inte.
+    if len(p) >= 10:
+        return p[-10:]
+    return p
 
 def pad_lankod(kod):
     """Ser till att länskoden alltid är 4 siffror (t.ex. 662 -> 0662)."""
@@ -161,13 +165,24 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         if not success:
              raise ValueError("Kunde inte läsa CSV-filen. Kontrollera att den är sparad som UTF-8 eller ISO-8859-1.")
 
+        # Skapa en mappning för att hitta kolumnnamn oberoende av case/whitespace
+        sample_row = csv_rows[0] if csv_rows else {}
+        headers_normalized = {k.strip().lower(): k for k in sample_row.keys()}
+        
+        def get_csv_val(row, *aliases):
+            for alias in aliases:
+                norm_alias = alias.lower()
+                if norm_alias in headers_normalized:
+                    return row.get(headers_normalized[norm_alias], '')
+            return ''
+
         for row in csv_rows:
             # Hantera fall där CSV kanske har andra kolumnnamn eller whitespace
             # Struktur: Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
-            pnr_raw = row.get('Personnr', '')
-            lankod_raw = row.get('Län och kommun', '')
-            yrkeskod_raw = row.get('Yrkeskod', '')
-            fordelningstal_raw = row.get('Fördelningstal', '')
+            pnr_raw = get_csv_val(row, 'Personnr', 'Personnummer', 'Pnr')
+            lankod_raw = get_csv_val(row, 'Län och kommun', 'Länkod', 'Lankod')
+            yrkeskod_raw = get_csv_val(row, 'Yrkeskod', 'Yrke')
+            fordelningstal_raw = get_csv_val(row, 'Fördelningstal', 'Fordelningstal', 'F-tal')
             
             pnr = clean_personnr(pnr_raw)
             lankod = pad_lankod(lankod_raw)
@@ -180,8 +195,7 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
                 }
 
     # 2. Parsa XML-filerna (Konteks filer)
-    # Vi itererar över alla filer och samlar personer
-    
+    # ... (kod för XML-parsing) ...
     all_persons_collected = []
     header_data = None
     
@@ -231,7 +245,7 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         raise ValueError("Fel: Kunde inte hitta 'Lonegranskning' data i någon av XML-filerna.")
 
     # 3. Slå ihop personer med samma personnummer (Merge duplicates)
-    # Definiera vilka fält som ska summeras
+    # ... (Samma merge logik) ...
     fields_to_sum = [
         'ArbetadeTimmar', 'GrundlonPerTimma', 'UtbNivaPerTimma', 
         'UtbetaltOverskott', 'Lonesumma', 'OBTillagg', 
@@ -323,15 +337,17 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
             
             # Fallback för Yrkeskod
             yrkeskod_elem = person.find('Yrkeskod')
-            if (yrkeskod_elem is None or not yrkeskod_elem.text) and csv_data['yrkeskod']:
+            current_yrkeskod = yrkeskod_elem.text.strip() if yrkeskod_elem is not None and yrkeskod_elem.text else ""
+            if not current_yrkeskod and csv_data['yrkeskod']:
                 if yrkeskod_elem is None:
                     yrkeskod_elem = ET.SubElement(person, 'Yrkeskod')
                 yrkeskod_elem.text = csv_data['yrkeskod']
             
             # Fallback för Fordelningstal
             ford_elem = person.find('Fordelningstal')
-            # Vi kollar om den saknas eller är "0"
-            is_empty_or_zero = ford_elem is None or not ford_elem.text or ford_elem.text == "0"
+            current_ford = ford_elem.text.strip() if ford_elem is not None and ford_elem.text else "0"
+            is_empty_or_zero = current_ford == "0" or not current_ford
+            
             if is_empty_or_zero and csv_data['fordelningstal']:
                 if ford_elem is None:
                     ford_elem = ET.SubElement(person, 'Fordelningstal')
