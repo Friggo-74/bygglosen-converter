@@ -124,8 +124,32 @@
 
             <div class="form-group">
                 <label for="xml_files">Konteks XML-filer</label>
-                <input type="file" name="xml_files" id="xml_files" accept=".xml" multiple required>
+                <input type="file" name="xml_files" id="xml_files" accept=".xml" multiple required
+                    onchange="checkXMLDates(this)">
                 <div class="hint">Ladda upp en eller flera Lonegranskning XML-filer.</div>
+            </div>
+
+            <!-- Datumkontroll Section -->
+            <div id="date-check-section"
+                style="display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 16px; margin-bottom: 1.5rem;">
+                <h3 style="font-size: 0.95rem; color: #92400e; margin-bottom: 8px;">Datumkontroll</h3>
+                <div id="date-info-msg" style="font-size: 0.85rem; color: #92400e; margin-bottom: 12px;">Läser filer...
+                </div>
+
+                <div style="display: flex; gap: 12px; align-items: flex-end;">
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.75rem; margin-bottom: 4px;">Startdatum</label>
+                        <input type="date" name="override_start" id="override_start"
+                            style="padding: 6px; font-size: 0.85rem;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="font-size: 0.75rem; margin-bottom: 4px;">Slutdatum</label>
+                        <input type="date" name="override_end" id="override_end"
+                            style="padding: 6px; font-size: 0.85rem;">
+                    </div>
+                </div>
+                <div class="hint" style="margin-top: 8px; color: #b45309;">Datumen ovan kommer att användas i den
+                    färdiga filen.</div>
             </div>
 
             <div class="form-group">
@@ -137,12 +161,95 @@
             </div>
 
             <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 2rem;">
-                <input type="checkbox" name="include_csv" id="include_csv" style="width: 20px; height: 20px; cursor: pointer;">
+                <input type="checkbox" name="include_csv" id="include_csv"
+                    style="width: 20px; height: 20px; cursor: pointer;">
                 <label for="include_csv" style="margin-bottom: 0; cursor: pointer;">Ladda även ner som CSV</label>
             </div>
 
             <button type="submit">Konvertera och Ladda Ner</button>
         </form>
+
+        <script>
+            async function checkXMLDates(input) {
+                const section = document.getElementById('date-check-section');
+                const msg = document.getElementById('date-info-msg');
+                const startInput = document.getElementById('override_start');
+                const endInput = document.getElementById('override_end');
+
+                if (!input.files || input.files.length === 0) {
+                    section.style.display = 'none';
+                    return;
+                }
+
+                section.style.display = 'block';
+                msg.innerHTML = "<em>Analyserar datum...</em>";
+
+                let detectedInterval = null;
+                let foundError = false;
+                let inconsistent = false;
+                let allIdentical = true;
+
+                const startRegex = /<LoneperiodStartdatum>(.*?)<\/LoneperiodStartdatum>/;
+                const endRegex = /<LoneperiodSlutdatum>(.*?)<\/LoneperiodSlutdatum>/;
+
+                for (let file of input.files) {
+                    try {
+                        // Läs första 10KB för att hitta headern
+                        const chunk = await file.slice(0, 10000).text();
+                        const startMatch = chunk.match(startRegex);
+                        const endMatch = chunk.match(endRegex);
+
+                        if (startMatch && endMatch) {
+                            const start = startMatch[1].trim();
+                            const end = endMatch[1].trim();
+
+                            if (start === end) {
+                                foundError = true;
+                            } else {
+                                allIdentical = false;
+                                if (!detectedInterval) {
+                                    detectedInterval = { start, end };
+                                } else if (detectedInterval.start !== start || detectedInterval.end !== end) {
+                                    inconsistent = true;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Kunde inte läsa fil:", file.name, e);
+                    }
+                }
+
+                if (foundError && allIdentical) {
+                    msg.innerHTML = "<strong style='color: #dc2626;'>⚠️ VARNING: Alla filer har samma start- och slutdatum.</strong> Justera gärna datumen nedan så att de avser rätt löneperiod.";
+                    // Om inga bra intervall hittades, föreslå de som fanns (även om de var fel) så användaren kan ändra
+                } else if (inconsistent) {
+                    msg.innerHTML = "<strong style='color: #d97706;'>⚠️ OBS: Filerna har olika datumintervall.</strong> Vi föreslår det första hittade intervallet, kontrollera att det stämmer.";
+                } else if (foundError) {
+                    msg.innerHTML = "<strong style='color: #d97706;'>⚠️ OBS: Vissa filer har felaktiga datum.</strong> Vi har valt ett korrekt intervall från en av de andra filerna.";
+                } else {
+                    msg.innerHTML = "✅ Datumkontroll klar. Kontrollera att perioden nedan stämmer.";
+                }
+
+                // Försök formatera om YYYYMMDD till YYYY-MM-DD för input[type=date]
+                function formatDate(raw) {
+                    if (!raw || raw.length !== 8) return "";
+                    return `${raw.substring(0, 4)}-${raw.substring(4, 6)}-${raw.substring(6, 8)}`;
+                }
+
+                if (detectedInterval) {
+                    startInput.value = formatDate(detectedInterval.start);
+                    endInput.value = formatDate(detectedInterval.end);
+                } else if (input.files.length > 0) {
+                    // Om vi inte hittade något intervall alls, försök ta första bästa datum
+                    // (Samma FileReader logik men utan check)
+                    const firstChunk = await input.files[0].slice(0, 1000).text();
+                    const s = firstChunk.match(startRegex);
+                    const e = firstChunk.match(endRegex);
+                    if (s) startInput.value = formatDate(s[1].trim());
+                    if (e) endInput.value = formatDate(e[1].trim());
+                }
+            }
+        </script>
         {% else %}
         <div style="text-align: center; padding: 2rem;">
             <p style="margin-bottom: 1rem; color: #666;">Du måste logga in för att använda verktyget.</p>

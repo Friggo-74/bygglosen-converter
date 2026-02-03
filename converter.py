@@ -105,7 +105,7 @@ def generate_csv_data(header_data, lankod_namn_map, grouped_persons):
             
     return output.getvalue().encode('utf-8-sig')
 
-def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", include_csv=False):
+def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", include_csv=False, override_start=None, override_end=None):
     """
     Konverterar data från XML och CSV streams.
     xml_file_streams: list of file-like objects (binary or text depending on parsing needs)
@@ -114,6 +114,8 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
     Om csv_file_stream är None, används länkoderna som redan finns i XML-filerna.
     
     include_csv: Om True, returnera både XML och CSV streams.
+    
+    override_start/end: Valfria datum (str eller None) som ersätter LoneperiodStartdatum/Slutdatum.
     
     Returnerar antingen:
     - xml_stream (om include_csv=False)
@@ -225,6 +227,13 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
                     'Lonetyp': original_group.findtext('Lonetyp'),
                     'Postort': original_group.findtext('Postort') or ""
                 }
+                
+                # Applicera override om de finns
+                if override_start:
+                    # Ta bort bindestreck om de kommer från HTML date input (YYYY-MM-DD -> YYYYMMDD)
+                    header_data['LoneperiodStartdatum'] = override_start.replace('-', '')
+                if override_end:
+                    header_data['LoneperiodSlutdatum'] = override_end.replace('-', '')
             
             # Hämta länkod för denna fil (används som fallback om ingen CSV finns)
             file_lankod = original_group.findtext('LanOchKommun')

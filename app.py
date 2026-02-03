@@ -303,6 +303,10 @@ def convert():
     csv_file = request.files.get('csv_file')
     include_csv = 'include_csv' in request.form
     
+    # Hämta eventuella datum-overrides
+    override_start = request.form.get('override_start')
+    override_end = request.form.get('override_end')
+    
     # XML files are required
     if not xml_files or all(f.filename == '' for f in xml_files):
         flash('Du måste ladda upp minst en XML-fil.')
@@ -321,7 +325,10 @@ def convert():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         if include_csv:
-            xml_result, csv_result = convert_bygglosen_data(xml_streams, csv_stream, include_csv=True)
+            xml_result, csv_result = convert_bygglosen_data(
+                xml_streams, csv_stream, include_csv=True, 
+                override_start=override_start, override_end=override_end
+            )
             
             # Create ZIP in memory
             zip_buffer = io.BytesIO()
@@ -337,7 +344,10 @@ def convert():
                 mimetype='application/zip'
             )
         else:
-            result_stream = convert_bygglosen_data(xml_streams, csv_stream, include_csv=False)
+            result_stream = convert_bygglosen_data(
+                xml_streams, csv_stream, include_csv=False,
+                override_start=override_start, override_end=override_end
+            )
             filename = f"LOSEN_konverterad_{timestamp}.xml"
             return send_file(
                 result_stream,
