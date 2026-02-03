@@ -61,7 +61,16 @@ def index():
         return render_template('index.html', user=None)
     
     # Kontrollera om användaren är registrerad i databasen
-    user_db = User.query.filter_by(email=user_session.get('email')).first()
+    user_id = session.get('user_id')
+    email = user_session.get('email', '').lower()
+    
+    if user_id:
+        user_db = User.query.get(user_id)
+    else:
+        user_db = User.query.filter_by(email=email).first()
+        if user_db:
+            session['user_id'] = user_db.id
+            
     if user_db and not user_db.is_registered:
         return redirect(url_for('register'))
         
@@ -81,11 +90,13 @@ def auth_google():
         
         provider_id = str(user_info.get('sub') or user_info.get('id'))
         email = user_info.get('email')
+        if email:
+            email = email.lower()
         
         # 1. Försök hitta på Google ID
         existing_user = User.query.filter_by(google_id=provider_id).first()
         
-        # 2. Om inte hittad, försök hitta på e-post (kontolänkning)
+        # 2. Om inte hittad, försöka hitta på e-post (kontolänkning)
         if not existing_user and email:
             existing_user = User.query.filter_by(email=email).first()
             if existing_user:
@@ -110,6 +121,7 @@ def auth_google():
         db.session.commit()
 
         session['user'] = dict(user_info)
+        session['user_id'] = existing_user.id
         
         # Omdirigera till registrering om info saknas
         if not existing_user.is_registered:
@@ -146,6 +158,8 @@ def auth_microsoft():
         
         provider_id = str(user_info.get('sub') or user_info.get('oid'))
         email = user_info.get('email') or user_info.get('preferred_username')
+        if email:
+            email = email.lower()
         
         # 1. Försök hitta på Microsoft ID
         existing_user = User.query.filter_by(microsoft_id=provider_id).first()
@@ -169,6 +183,8 @@ def auth_microsoft():
             # Uppdatera info
             existing_user.name = user_info.get('name')
             existing_user.picture = user_info.get('picture')
+            if email:
+                existing_user.email = email
         
         log_entry = LoginLog(user=existing_user)
         db.session.add(log_entry)
@@ -179,6 +195,7 @@ def auth_microsoft():
             user_info['email'] = user_info['preferred_username']
 
         session['user'] = dict(user_info)
+        session['user_id'] = existing_user.id
         
         # Omdirigera till registrering om info saknas
         if not existing_user.is_registered:
@@ -200,8 +217,15 @@ def register():
     if not user_session:
         return redirect('/')
     
-    email = user_session.get('email')
-    user_db = User.query.filter_by(email=email).first()
+    user_id = session.get('user_id')
+    email = user_session.get('email', '').lower()
+    
+    if user_id:
+        user_db = User.query.get(user_id)
+    else:
+        user_db = User.query.filter_by(email=email).first()
+        if user_db:
+            session['user_id'] = user_db.id
     
     if not user_db:
         # Detta bör inte hända om man är inloggad, men för säkerhets skull

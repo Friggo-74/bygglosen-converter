@@ -385,19 +385,25 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         # Skapa en ny <Lonegranskning> för varje unik länkod
         lg_block = ET.SubElement(new_root, 'Lonegranskning')
         
-        # Lägg in header-taggarna
-        for key, val in header_data.items():
+        # Lägg in header-taggarna i en specifik ordning enligt Byggnads önskemål
+        header_keys = [
+            'Organisationsnummer', 'Foretagsnamn', 'LoneperiodStartdatum', 
+            'LoneperiodSlutdatum', 'Avtalsomrade', 'Lonetyp'
+        ]
+        
+        for key in header_keys:
+            val = header_data.get(key, '')
             elem = ET.SubElement(lg_block, key)
-            if key == 'Postort':
-                # Använd kommunnamn från Excel om det finns, annars originalvärdet
-                elem.text = lankod_namn_map.get(lankod, val) # Fallback till original
-            else:
-                elem.text = val
+            elem.text = val
             
-        # Lägg in den specifika Länskoden för denna grupp
+        # LanOchKommun SKA ligga före Postort
         lk_elem = ET.SubElement(lg_block, 'LanOchKommun')
         lk_elem.text = lankod
         
+        po_elem = ET.SubElement(lg_block, 'Postort')
+        # Använd kommunnamn från Excel om det finns, annars originalvärdet från header_data
+        po_elem.text = lankod_namn_map.get(lankod, header_data.get('Postort', ''))
+            
         # Skapa <Personer> blocket och lägg in alla personer som hör hit
         personer_block = ET.SubElement(lg_block, 'Personer')
         for p in person_list:
