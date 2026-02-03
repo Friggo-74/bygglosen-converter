@@ -78,10 +78,83 @@
             text-decoration: none;
             border-radius: 6px;
             margin-bottom: 1rem;
+            border: none;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-family: inherit;
         }
 
         .btn-secondary {
             background: #64748b;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            margin-bottom: 0;
+            font-size: 0.75rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Simple Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+        }
+
+        .modal-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 0.875rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        .alert-flash {
+            padding: 1rem;
+            background: #dcfce7;
+            color: #166534;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            border: 1px solid #bbf7d0;
         }
     </style>
 </head>
@@ -93,6 +166,14 @@
             <a href="/" class="btn btn-secondary">Tillbaka till start</a>
         </div>
 
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        {% for message in messages %}
+        <div class="alert-flash">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
         <table>
             <thead>
                 <tr>
@@ -101,6 +182,7 @@
                     <th>Företag</th>
                     <th>Inloggningar</th>
                     <th>Senast Inloggad</th>
+                    <th>Åtgärder</th>
                 </tr>
             </thead>
             <tbody>
@@ -123,11 +205,72 @@
                     <td>{{ user.company }}</td>
                     <td>{{ user.login_count }}</td>
                     <td>{{ user.last_login }}</td>
+                    <td>
+                        <div class="actions">
+                            <button class="btn btn-secondary btn-sm"
+                                onclick="editUser({{ user | tojson }})">Redigera</button>
+                            <form action="{{ url_for('admin_reset_user', user_id=user.id) }}" method="POST"
+                                onsubmit="return confirm('Är du säker på att du vill ta bort användarens registrering? De kommer behöva registrera sig igen vid nästa besök.')">
+                                <button type="submit" class="btn btn-danger btn-sm">Ta bort</button>
+                            </form>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Redigera Användare</h2>
+            </div>
+            <form id="editForm" method="POST">
+                <div class="form-group">
+                    <label>Förnamn</label>
+                    <input type="text" name="first_name" id="edit_first_name" required>
+                </div>
+                <div class="form-group">
+                    <label>Efternamn</label>
+                    <input type="text" name="last_name" id="edit_last_name" required>
+                </div>
+                <div class="form-group">
+                    <label>Företag</label>
+                    <input type="text" name="company" id="edit_company" required>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                    <button type="submit" class="btn" style="flex: 1; margin-bottom: 0;">Spara</button>
+                    <button type="button" class="btn btn-secondary" style="flex: 1; margin-bottom: 0;"
+                        onclick="closeModal()">Avbryt</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('editModal');
+        const form = document.getElementById('editForm');
+
+        function editUser(user) {
+            form.action = `/admin/user/${user.id}/update`;
+            document.getElementById('edit_first_name').value = user.first_name || '';
+            document.getElementById('edit_last_name').value = user.last_name || '';
+            document.getElementById('edit_company').value = user.company !== '-' ? user.company : '';
+            modal.style.display = 'block';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        window.onclick = function (event) {
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
 </body>
 
 </html>

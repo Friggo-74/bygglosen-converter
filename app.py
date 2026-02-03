@@ -248,13 +248,48 @@ def admin():
             'is_registered': u.is_registered,
             'picture': u.picture,
             'login_count': login_count,
-            'last_login': last_login_time
+            'last_login': last_login_time,
+            'id': u.id,
+            'first_name': u.first_name or "",
+            'last_name': u.last_name or ""
         })
     
     # Sortera på senaste inloggning
     users_data.sort(key=lambda x: x['last_login'], reverse=True)
     
     return render_template('admin.html', users=users_data)
+
+@app.route('/admin/user/<int:user_id>/update', methods=['POST'])
+def admin_update_user(user_id):
+    user_session = session.get('user')
+    if not user_session or user_session.get('email') != 'fredrikskonto@gmail.com':
+        return "Unauthorized", 403
+        
+    user_db = User.query.get_or_404(user_id)
+    user_db.first_name = request.form.get('first_name')
+    user_db.last_name = request.form.get('last_name')
+    user_db.company = request.form.get('company')
+    db.session.commit()
+    
+    flash(f'Användare {user_db.email} har uppdaterats.')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/user/<int:user_id>/reset', methods=['POST'])
+def admin_reset_user(user_id):
+    user_session = session.get('user')
+    if not user_session or user_session.get('email') != 'fredrikskonto@gmail.com':
+        return "Unauthorized", 403
+        
+    user_db = User.query.get_or_404(user_id)
+    user_db.is_registered = False
+    # Vi rensar även namnuppgifterna så de får fylla i dem på nytt
+    user_db.first_name = None
+    user_db.last_name = None
+    user_db.company = None
+    db.session.commit()
+    
+    flash(f'Användare {user_db.email} har återställts och måste registrera sig igen.')
+    return redirect(url_for('admin'))
 
 import zipfile
 
