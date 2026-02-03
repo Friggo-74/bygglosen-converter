@@ -98,7 +98,8 @@
                 <tr>
                     <th>Användare</th>
                     <th>Email</th>
-                    <th>Antal Inloggningar</th>
+                    <th>Företag</th>
+                    <th>Inloggningar</th>
                     <th>Senast Inloggad</th>
                 </tr>
             </thead>
@@ -110,10 +111,16 @@
                             {% if user.picture %}
                             <img src="{{ user.picture }}" alt="" class="user-img">
                             {% endif %}
-                            {{ user.name }}
+                            <div>
+                                {{ user.name }}
+                                {% if not user.is_registered %}
+                                <br><small style="color: #ef4444;">(Ej klar)</small>
+                                {% endif %}
+                            </div>
                         </div>
                     </td>
                     <td>{{ user.email }}</td>
+                    <td>{{ user.company }}</td>
                     <td>{{ user.login_count }}</td>
                     <td>{{ user.last_login }}</td>
                 </tr>

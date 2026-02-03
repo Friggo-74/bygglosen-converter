@@ -56,8 +56,16 @@ with app.app_context():
 
 @app.route('/')
 def index():
-    user = session.get('user')
-    return render_template('index.html', user=user)
+    user_session = session.get('user')
+    if not user_session:
+        return render_template('index.html', user=None)
+    
+    # Kontrollera om användaren är registrerad i databasen
+    user_db = User.query.filter_by(email=user_session.get('email')).first()
+    if user_db and not user_db.is_registered:
+        return redirect(url_for('register'))
+        
+    return render_template('index.html', user=user_session)
 
 # --- Google Login ---
 @app.route('/login/google')
@@ -102,6 +110,11 @@ def auth_google():
         db.session.commit()
 
         session['user'] = dict(user_info)
+        
+        # Omdirigera till registrering om info saknas
+        if not existing_user.is_registered:
+            return redirect(url_for('register'))
+            
         return redirect('/')
     except Exception as e:
         flash(f'Google-inloggning misslyckades: {str(e)}')
@@ -166,6 +179,11 @@ def auth_microsoft():
             user_info['email'] = user_info['preferred_username']
 
         session['user'] = dict(user_info)
+        
+        # Omdirigera till registrering om info saknas
+        if not existing_user.is_registered:
+            return redirect(url_for('register'))
+            
         return redirect('/')
     except Exception as e:
         flash(f'Microsoft-inloggning misslyckades: {str(e)}')
@@ -175,6 +193,34 @@ def auth_microsoft():
 def logout():
     session.pop('user', None)
     return redirect('/')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    user_session = session.get('user')
+    if not user_session:
+        return redirect('/')
+    
+    email = user_session.get('email')
+    user_db = User.query.filter_by(email=email).first()
+    
+    if not user_db:
+        # Detta bör inte hända om man är inloggad, men för säkerhets skull
+        return redirect('/')
+        
+    if user_db.is_registered:
+        return redirect('/')
+        
+    if request.method == 'POST':
+        user_db.first_name = request.form.get('first_name')
+        user_db.last_name = request.form.get('last_name')
+        user_db.company = request.form.get('company')
+        user_db.is_registered = True
+        db.session.commit()
+        
+        flash('Tack! Din registrering är nu klar.')
+        return redirect('/')
+        
+    return render_template('register.html', email=email)
 
 @app.route('/admin')
 def admin():
@@ -196,8 +242,10 @@ def admin():
         last_login_time = last_login_entry.timestamp.strftime("%Y-%m-%d %H:%M") if last_login_entry else "Aldrig"
         
         users_data.append({
-            'name': u.name,
+            'name': f"{u.first_name} {u.last_name}" if u.is_registered else (u.name or "Ej registrerad"),
             'email': u.email,
+            'company': u.company or "-",
+            'is_registered': u.is_registered,
             'picture': u.picture,
             'login_count': login_count,
             'last_login': last_login_time

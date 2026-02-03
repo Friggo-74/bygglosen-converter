@@ -8,7 +8,11 @@ class User(db.Model):
     google_id = db.Column(db.String(100), unique=True, nullable=True)
     microsoft_id = db.Column(db.String(100), unique=True, nullable=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=True)
+    name = db.Column(db.String(100), nullable=True) # Full name from OAuth
+    first_name = db.Column(db.String(100), nullable=True)
+    last_name = db.Column(db.String(100), nullable=True)
+    company = db.Column(db.String(100), nullable=True)
+    is_registered = db.Column(db.Boolean, default=False)
     picture = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
