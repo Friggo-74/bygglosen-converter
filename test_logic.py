@@ -3,17 +3,14 @@ import os
 import io
 
 def generate_dummy_files():
-    # Create a dummy CSV based on the new structure:
-    # Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
-    # Testing robust header matching (mixed case/spaces) and 10-digit PNRs
+    # Testing robust header matching and 10-digit PNRs
+    # Added "0" to Yrkeskod in XML for Cecilia to test fallback
     csv_content = """Anst.id; Namn ; länkOD ; personnummer ; YRKESKOD ; fördelningstal ;
 1;Anders Andersson;0662;900101-1234;123;100;
 2;Bertil Bengtsson;1280;920202-5678;456;80;
-3;Cecilia Carlsson;1293;800101-9999;789;50;
+3;Cecilia Carlsson;1293;800101-9999;833215;50;
 """
     
-    # Create a dummy XML (Konteks-like structure)
-    # Cecilia is missing Yrkeskod and Fordelningstal in XML
     xml_content = """<?xml version="1.0" encoding="ISO-8859-1"?>
 <Lonerapport>
   <Lonegranskning>
@@ -42,6 +39,8 @@ def generate_dummy_files():
        <Person>
         <Personnummer>198001019999</Personnummer>
         <Namn>Cecilia Carlsson</Namn>
+        <Yrkeskod>0</Yrkeskod>
+        <Fordelningstal>0</Fordelningstal>
         <Lon>35000</Lon>
       </Person>
     </Personer>
@@ -67,10 +66,10 @@ def test_conversion():
         csv_content = csv_res.getvalue().decode('utf-8-sig')
         
         # Verify XML Fallback for Cecilia (198001019999)
-        if '<Yrkeskod>789</Yrkeskod>' in xml_content and '<Fordelningstal>50</Fordelningstal>' in xml_content:
+        if '<Yrkeskod>833215</Yrkeskod>' in xml_content and '<Fordelningstal>50</Fordelningstal>' in xml_content:
             print("SUCCESS: Found fallback values (Yrkeskod, Fordelningstal) for Cecilia in XML output.")
         else:
-            print("FAILURE: Fallback values for Cecilia missing in XML.")
+            print("FAILURE: Fallback values for Cecilia missing or incorrect in XML.")
             
         # Verify CSV export also has the fields
         expected_headers = ['Yrkeskod', 'Fordelningstal']
@@ -80,7 +79,7 @@ def test_conversion():
             else:
                 print(f"SUCCESS: Found header '{header}' in CSV export.")
         
-        if "789" in csv_content and "50" in csv_content:
+        if "833215" in csv_content and "50" in csv_content:
             print("SUCCESS: Fallback values present in CSV export.")
         else:
             print("FAILURE: Fallback values missing in CSV export.")

@@ -4,10 +4,11 @@ import io
 from collections import defaultdict
 
 def clean_personnr(pnr):
-    """Tar bort bindestreck och returnerar de sista 10 siffrorna för robust matchning."""
+    """Tar bort ALLT utom siffror och returnerar de sista 10 siffrorna för robust matchning."""
     if not pnr:
         return ""
-    p = pnr.replace("-", "").strip()
+    # Behåll endast siffor
+    p = "".join(c for c in str(pnr) if c.isdigit())
     # Vi sparar bara de sista 10 siffrorna för att matcha oavsett om XML/CSV har sekel (19/20) eller inte.
     if len(p) >= 10:
         return p[-10:]
@@ -17,7 +18,7 @@ def pad_lankod(kod):
     """Ser till att länskoden alltid är 4 siffror (t.ex. 662 -> 0662)."""
     if not kod:
         return None
-    return kod.strip().zfill(4)
+    return str(kod).strip().zfill(4)
 
 import openpyxl
 import os
@@ -50,7 +51,7 @@ def load_lankod_map(excel_path='kommunlankod-2026.xlsx'):
         print(f"Varning: Kunde inte läsa excel-filen: {e}")
         
     return lankod_map
-
+ Aurora
 def generate_csv_data(header_data, lankod_namn_map, grouped_persons):
     """Genererar CSV-data baserat på den konverterade XML-strukturen."""
     output = io.StringIO()
@@ -179,10 +180,10 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         for row in csv_rows:
             # Hantera fall där CSV kanske har andra kolumnnamn eller whitespace
             # Struktur: Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
-            pnr_raw = get_csv_val(row, 'Personnr', 'Personnummer', 'Pnr')
-            lankod_raw = get_csv_val(row, 'Län och kommun', 'Länkod', 'Lankod')
-            yrkeskod_raw = get_csv_val(row, 'Yrkeskod', 'Yrke')
-            fordelningstal_raw = get_csv_val(row, 'Fördelningstal', 'Fordelningstal', 'F-tal')
+            pnr_raw = get_csv_val(row, 'Personnr', 'Personnummer', 'Pnr', 'Person nr', 'Social Security')
+            lankod_raw = get_csv_val(row, 'Län och kommun', 'Länkod', 'Lankod', 'Kommun', 'Län')
+            yrkeskod_raw = get_csv_val(row, 'Yrkeskod', 'Yrke', 'Yrkes-kod', 'Profession', 'Job description', 'B_YRKESKOD')
+            fordelningstal_raw = get_csv_val(row, 'Fördelningstal', 'Fordelningstal', 'F-tal', 'Fördelning', 'B_FORDELNINGSTAL')
             
             pnr = clean_personnr(pnr_raw)
             lankod = pad_lankod(lankod_raw)
@@ -286,41 +287,26 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
                         new_elem = ET.SubElement(existing_person, field)
                         new_elem.text = elem_new.text
 
-            # Hantera fält som ska vara MAX (t.ex. Fordelningstal)
-            for field in fields_to_max:
-                elem_exist = existing_person.find(field)
-                elem_new = person.find(field)
+            # Special merge för Yrkeskod och Fordelningstal (om de saknas i basen men finns i efterföljande)
+            for field in ['Yrkeskod', 'Fordelningstal']:
+                base_elem = existing_person.find(field)
+                new_elem = person.find(field)
+                base_val = base_elem.text.strip() if base_elem is not None and base_elem.text else ""
                 
-                if elem_new is not None:
-                    if elem_exist is not None:
-                        try:
-                            val1 = float(elem_exist.text or 0)
-                            val2 = float(elem_new.text or 0)
-                            max_val = max(val1, val2)
-                            if field == 'Fordelningstal':
-                                elem_exist.text = str(int(max_val))
-                            else:
-                                elem_exist.text = "{:.2f}".format(max_val)
-                        except ValueError:
-                            pass
-                    else:
-                        # Lägg till fältet om det saknas, formatera som heltal om Fordelningstal
-                        new_elem = ET.SubElement(existing_person, field)
-                        if field == 'Fordelningstal':
-                            try:
-                                new_elem.text = str(int(float(elem_new.text or 0)))
-                            except ValueError:
-                                new_elem.text = elem_new.text
-                        else:
-                            new_elem.text = elem_new.text
+                if (not base_val or base_val == "0") and new_elem is not None and new_elem.text:
+                    new_val = new_elem.text.strip()
+                    if new_val and new_val != "0":
+                        if base_elem is None:
+                            base_elem = ET.SubElement(existing_person, field)
+                        base_elem.text = new_val
         else:
             # Första gången vi ser personen, spara den
             merged_persons_map[clean_pnr] = person
             # Säkra att Fordelningstal är heltal även här
             ft_elem = person.find('Fordelningstal')
-            if ft_elem is not None:
+            if ft_elem is not None and ft_elem.text:
                 try:
-                    ft_elem.text = str(int(float(ft_elem.text or 0)))
+                    ft_elem.text = str(int(float(ft_elem.text)))
                 except ValueError:
                     pass
             
@@ -338,10 +324,10 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
             # Fallback för Yrkeskod
             yrkeskod_elem = person.find('Yrkeskod')
             current_yrkeskod = yrkeskod_elem.text.strip() if yrkeskod_elem is not None and yrkeskod_elem.text else ""
-            if not current_yrkeskod and csv_data['yrkeskod']:
+            if (not current_yrkeskod or current_yrkeskod == "0") and csv_data['yrkeskod']:
                 if yrkeskod_elem is None:
                     yrkeskod_elem = ET.SubElement(person, 'Yrkeskod')
-                yrkeskod_elem.text = csv_data['yrkeskod']
+                yrkeskod_elem.text = str(csv_data['yrkeskod']).strip()
             
             # Fallback för Fordelningstal
             ford_elem = person.find('Fordelningstal')
@@ -353,10 +339,10 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
                     ford_elem = ET.SubElement(person, 'Fordelningstal')
                 try:
                     # Säkra att det blir ett heltal
-                    val = int(float(csv_data['fordelningstal']))
+                    val = int(float(str(csv_data['fordelningstal']).strip()))
                     ford_elem.text = str(val)
                 except ValueError:
-                    ford_elem.text = csv_data['fordelningstal']
+                    ford_elem.text = str(csv_data['fordelningstal']).strip()
 
     # 4. Gruppera personer baserat på CSV-datan (om den finns) eller befintlig XML-data
     # Dictionary structure: { "0581": [PersonElement1, PersonElement2], "1293": [...] }
