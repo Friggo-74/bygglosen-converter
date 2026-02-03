@@ -401,6 +401,9 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         # Skapa <Personer> blocket och lägg in alla personer som hör hit
         personer_block = ET.SubElement(lg_block, 'Personer')
         for p in person_list:
+            # Ta bort det interna attributet innan vi lägger till personen i det nya blocket
+            if '_original_lankod' in p.attrib:
+                del p.attrib['_original_lankod']
             personer_block.append(p)
 
     # 6. Returnera den nya XML:en som en sträng (snyggt formaterad)
