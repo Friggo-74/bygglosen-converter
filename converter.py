@@ -47,13 +47,72 @@ def load_lankod_map(excel_path='kommunlankod-2026.xlsx'):
         
     return lankod_map
 
-def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293"):
+def generate_csv_data(header_data, lankod_namn_map, grouped_persons):
+    """Genererar CSV-data baserat på den konverterade XML-strukturen."""
+    output = io.StringIO()
+    # UTF-8 with BOM for Excel compatibility
+    output.write('\ufeff')
+    
+    # Samla alla unika fältnamn från alla personer för att bygga headers
+    # Vi exkluderar vissa fält enligt önskemål
+    excluded_fields = {'Arbetsplatsnr', 'UtlanadTillOrgnr', '_original_lankod'}
+    
+    # Statiska headers från Lonegranskning
+    static_headers = ['Postort', 'LanOchKommun', 'LoneperiodStartdatum', 'LoneperiodSlutdatum']
+    
+    # Hitta alla möjliga Person-fält
+    person_fields = []
+    seen_person_fields = set()
+    
+    # Först samla fält för att få en konsekvent ordning
+    for lankod, person_list in grouped_persons.items():
+        for p in person_list:
+            for child in p:
+                if child.tag not in seen_person_fields and child.tag not in excluded_fields:
+                    seen_person_fields.add(child.tag)
+                    person_fields.append(child.tag)
+    
+    # Sortera person-fälten lite snyggt, Personnummer först om det finns
+    if 'Personnummer' in person_fields:
+        person_fields.remove('Personnummer')
+        person_fields.insert(0, 'Personnummer')
+    
+    headers = static_headers + person_fields
+    
+    writer = csv.DictWriter(output, fieldnames=headers, delimiter=';', extrasaction='ignore')
+    writer.writeheader()
+    
+    for lankod, person_list in grouped_persons.items():
+        # Värden som är samma för hela denna länkod-grupp
+        row_base = {
+            'Postort': lankod_namn_map.get(lankod, header_data.get('Postort', '')),
+            'LanOchKommun': lankod,
+            'LoneperiodStartdatum': header_data.get('LoneperiodStartdatum', ''),
+            'LoneperiodSlutdatum': header_data.get('LoneperiodSlutdatum', '')
+        }
+        
+        for p in person_list:
+            row = row_base.copy()
+            for child in p:
+                if child.tag not in excluded_fields:
+                    row[child.tag] = child.text
+            writer.writerow(row)
+            
+    return output.getvalue().encode('utf-8-sig')
+
+def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", include_csv=False):
     """
     Konverterar data från XML och CSV streams.
     xml_file_streams: list of file-like objects (binary or text depending on parsing needs)
     csv_file_stream: file-like object (text mode preferable) - OPTIONAL
     
     Om csv_file_stream är None, används länkoderna som redan finns i XML-filerna.
+    
+    include_csv: Om True, returnera både XML och CSV streams.
+    
+    Returnerar antingen:
+    - xml_stream (om include_csv=False)
+    - (xml_stream, csv_stream) (om include_csv=True)
     """
     
     # Ladda upp länskods-mappning en gång
@@ -308,7 +367,13 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         
     new_tree = ET.ElementTree(new_root)
     
-    f = io.BytesIO()
-    new_tree.write(f, encoding='ISO-8859-1', xml_declaration=True)
-    f.seek(0)
-    return f
+    xml_io = io.BytesIO()
+    new_tree.write(xml_io, encoding='ISO-8859-1', xml_declaration=True)
+    xml_io.seek(0)
+    
+    if include_csv:
+        csv_data = generate_csv_data(header_data, lankod_namn_map, grouped_persons)
+        csv_io = io.BytesIO(csv_data)
+        return xml_io, csv_io
+        
+    return xml_io

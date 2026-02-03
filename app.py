@@ -208,6 +208,8 @@ def admin():
     
     return render_template('admin.html', users=users_data)
 
+import zipfile
+
 @app.route('/convert', methods=['POST'])
 def convert():
     if not session.get('user'):
@@ -216,6 +218,7 @@ def convert():
 
     xml_files = request.files.getlist('xml_files')
     csv_file = request.files.get('csv_file')
+    include_csv = 'include_csv' in request.form
     
     # XML files are required
     if not xml_files or all(f.filename == '' for f in xml_files):
@@ -232,15 +235,33 @@ def convert():
         
     try:
         xml_streams = [f.stream for f in xml_files]
-        result_stream = convert_bygglosen_data(xml_streams, csv_stream)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"LOSEN_konverterad_{timestamp}.xml"
-        return send_file(
-            result_stream,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/xml'
-        )
+        
+        if include_csv:
+            xml_result, csv_result = convert_bygglosen_data(xml_streams, csv_stream, include_csv=True)
+            
+            # Create ZIP in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(f"LOSEN_konverterad_{timestamp}.xml", xml_result.getvalue())
+                zf.writestr(f"LOSEN_konverterad_{timestamp}.csv", csv_result.getvalue())
+            
+            zip_buffer.seek(0)
+            return send_file(
+                zip_buffer,
+                as_attachment=True,
+                download_name=f"LOSEN_export_{timestamp}.zip",
+                mimetype='application/zip'
+            )
+        else:
+            result_stream = convert_bygglosen_data(xml_streams, csv_stream, include_csv=False)
+            filename = f"LOSEN_konverterad_{timestamp}.xml"
+            return send_file(
+                result_stream,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/xml'
+            )
     except Exception as e:
         flash(f'Ett fel uppstod vid konvertering: {str(e)}')
         return redirect('/')

@@ -44,6 +44,7 @@ def generate_dummy_files():
 
 def test_conversion():
     from converter import convert_bygglosen_data
+    import csv
     
     csv_str, xml_str = generate_dummy_files()
     
@@ -51,25 +52,48 @@ def test_conversion():
     csv_stream = io.BytesIO(csv_str.encode('utf-8'))
     xml_stream = io.BytesIO(xml_str.encode('iso-8859-1'))
     
-    print("Testing conversion logic directly...")
+    print("Testing conversion logic directly (XML only)...")
     try:
         result_stream = convert_bygglosen_data(xml_stream, csv_stream)
         result_content = result_stream.getvalue().decode('iso-8859-1')
         
-        print("\n--- Result XML Start ---")
-        print(result_content[:500])
-        print("--- Result XML End ---")
-        
         if "0662" in result_content and "1280" in result_content:
-            print("SUCCESS: Found expected LanOchKommun codes in output.")
+            print("SUCCESS: Found expected LanOchKommun codes in XML output.")
         else:
-            print("FAILURE: expected codes not found.")
+            print("FAILURE: expected codes not found in XML.")
             
-        if "1293" in result_content:
-             print("SUCCESS: Found default code for unmatched person.")
-        
     except Exception as e:
-        print(f"FAILURE: Exception occurred: {e}")
+        print(f"FAILURE: Exception occurred during XML test: {e}")
+
+    # Reset streams or recreate them
+    csv_stream = io.BytesIO(csv_str.encode('utf-8'))
+    xml_stream = io.BytesIO(xml_str.encode('iso-8859-1'))
+    
+    print("\nTesting conversion logic (XML + CSV)...")
+    try:
+        xml_res, csv_res = convert_bygglosen_data(xml_stream, csv_stream, include_csv=True)
+        csv_content = csv_res.getvalue().decode('utf-8-sig')
+        
+        print("\n--- Result CSV Start ---")
+        print(csv_content[:500])
+        print("--- Result CSV End ---")
+        
+        # Check for headers
+        expected_headers = ['Postort', 'LanOchKommun', 'LoneperiodStartdatum', 'LoneperiodSlutdatum', 'Personnummer', 'Namn', 'Lon']
+        for header in expected_headers:
+            if header not in csv_content:
+                print(f"FAILURE: Header '{header}' missing in CSV.")
+            else:
+                print(f"SUCCESS: Found header '{header}'.")
+        
+        # Check for data
+        if "199001011234" in csv_content and "0662" in csv_content:
+            print("SUCCESS: Found person data and lankod in CSV.")
+        else:
+            print("FAILURE: Person data or lankod missing in CSV.")
+            
+    except Exception as e:
+        print(f"FAILURE: Exception occurred during CSV test: {e}")
 
 if __name__ == "__main__":
     test_conversion()
