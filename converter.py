@@ -120,8 +120,8 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
     lankod_namn_map = load_lankod_map()
     
     # 1. Läs in CSV-filen till en dictionary (om den finns)
-    # Mappar Personnummer -> LänKod
-    pnr_to_lankod = {}
+    # Mappar Personnummer -> { 'lankod': '...', 'yrkeskod': '...', 'fordelningstal': '...' }
+    pnr_to_csv_data = {}
     
     # Endast processa CSV om den faktiskt skickades med
     if csv_file_stream is not None:
@@ -163,14 +163,21 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
 
         for row in csv_rows:
             # Hantera fall där CSV kanske har andra kolumnnamn eller whitespace
+            # Struktur: Anst.id;Namn;Län och kommun;Personnr;Yrkeskod;Fördelningstal;
             pnr_raw = row.get('Personnr', '')
             lankod_raw = row.get('Län och kommun', '')
+            yrkeskod_raw = row.get('Yrkeskod', '')
+            fordelningstal_raw = row.get('Fördelningstal', '')
             
             pnr = clean_personnr(pnr_raw)
             lankod = pad_lankod(lankod_raw)
             
-            if pnr and lankod:
-                pnr_to_lankod[pnr] = lankod
+            if pnr:
+                pnr_to_csv_data[pnr] = {
+                    'lankod': lankod,
+                    'yrkeskod': yrkeskod_raw.strip() if yrkeskod_raw else None,
+                    'fordelningstal': fordelningstal_raw.strip() if fordelningstal_raw else None
+                }
 
     # 2. Parsa XML-filerna (Konteks filer)
     # Vi itererar över alla filer och samlar personer
@@ -306,6 +313,35 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
     # Uppdatera listan med unika personer
     unique_persons = list(merged_persons_map.values())
 
+    # 3.5 Fallback för Yrkeskod och Fördelningstal från CSV
+    for person in unique_persons:
+        pnr_xml = person.findtext('Personnummer')
+        clean_pnr = clean_personnr(pnr_xml)
+        
+        if clean_pnr in pnr_to_csv_data:
+            csv_data = pnr_to_csv_data[clean_pnr]
+            
+            # Fallback för Yrkeskod
+            yrkeskod_elem = person.find('Yrkeskod')
+            if (yrkeskod_elem is None or not yrkeskod_elem.text) and csv_data['yrkeskod']:
+                if yrkeskod_elem is None:
+                    yrkeskod_elem = ET.SubElement(person, 'Yrkeskod')
+                yrkeskod_elem.text = csv_data['yrkeskod']
+            
+            # Fallback för Fordelningstal
+            ford_elem = person.find('Fordelningstal')
+            # Vi kollar om den saknas eller är "0"
+            is_empty_or_zero = ford_elem is None or not ford_elem.text or ford_elem.text == "0"
+            if is_empty_or_zero and csv_data['fordelningstal']:
+                if ford_elem is None:
+                    ford_elem = ET.SubElement(person, 'Fordelningstal')
+                try:
+                    # Säkra att det blir ett heltal
+                    val = int(float(csv_data['fordelningstal']))
+                    ford_elem.text = str(val)
+                except ValueError:
+                    ford_elem.text = csv_data['fordelningstal']
+
     # 4. Gruppera personer baserat på CSV-datan (om den finns) eller befintlig XML-data
     # Dictionary structure: { "0581": [PersonElement1, PersonElement2], "1293": [...] }
     grouped_persons = defaultdict(list)
@@ -318,8 +354,8 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         # 1. CSV-mappning (om tillgänglig)
         # 2. Befintlig LanOchKommun i XML-filen
         # 3. Default länkod
-        if clean_pnr in pnr_to_lankod:
-            target_kod = pnr_to_lankod[clean_pnr]
+        if clean_pnr in pnr_to_csv_data and pnr_to_csv_data[clean_pnr]['lankod']:
+            target_kod = pnr_to_csv_data[clean_pnr]['lankod']
         else:
             # Försök hämta från XML:en (personelementet eller root)
             existing_lankod = person.findtext('LanOchKommun')
