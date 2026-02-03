@@ -51,7 +51,7 @@ def load_lankod_map(excel_path='kommunlankod-2026.xlsx'):
         print(f"Varning: Kunde inte läsa excel-filen: {e}")
         
     return lankod_map
- Aurora
+
 def generate_csv_data(header_data, lankod_namn_map, grouped_persons):
     """Genererar CSV-data baserat på den konverterade XML-strukturen."""
     output = io.StringIO()
