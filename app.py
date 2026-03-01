@@ -22,7 +22,7 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 CLERK_SECRET_KEY = os.getenv('CLERK_SECRET_KEY')
 CLERK_PUBLISHABLE_KEY = os.getenv('CLERK_PUBLISHABLE_KEY')
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'fredrikskonto@gmail.com')
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', '')
 
 sdk = Clerk(bearer_auth=CLERK_SECRET_KEY)
 
