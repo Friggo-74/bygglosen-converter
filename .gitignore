@@ -8,3 +8,5 @@ migrations/
 venv/
 .idea/
 .vscode/
+# Clerk / local dev
+.env.local

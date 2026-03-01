@@ -1,374 +1,169 @@
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, session
+from flask import Flask, render_template, request, send_file, flash, redirect, url_for
 from converter import convert_bygglosen_data
-from models import db, User, LoginLog
 import io
+import zipfile
 from datetime import datetime
 import os
-from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
+from functools import wraps
+from clerk_backend_api import Clerk
+from clerk_backend_api.security import authenticate_request as clerk_authenticate_request
+from clerk_backend_api.security.types import AuthenticateRequestOptions
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')  # Use env var or default
+app.secret_key = os.getenv('SECRET_KEY', 'bygglosen-secret-key')
 app.config['SESSION_COOKIE_NAME'] = 'bygglosen-session'
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# --- Database Config ---
-database_url = os.getenv('DATABASE_URL', 'sqlite:///app.db')
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
+CLERK_SECRET_KEY = os.getenv('CLERK_SECRET_KEY')
+CLERK_PUBLISHABLE_KEY = os.getenv('CLERK_PUBLISHABLE_KEY')
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'fredrikskonto@gmail.com')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
+sdk = Clerk(bearer_auth=CLERK_SECRET_KEY)
 
-# --- OAuth Config ---
-oauth = OAuth(app)
 
-# Google OAuth
-google = oauth.register(
-    name='google',
-    client_id=os.getenv("GOOGLE_CLIENT_ID"),
-    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-    client_kwargs={'scope': 'openid email profile'}
-)
+def get_user_from_request():
+    """Verify Clerk session token from request and return user info, or None."""
+    try:
+        authorized_party = os.getenv('CLERK_AUTHORIZED_PARTY', '')
+        opts = AuthenticateRequestOptions(
+            authorized_parties=[authorized_party] if authorized_party else []
+        )
+        request_state = clerk_authenticate_request(sdk, request, opts)
+        if request_state.is_signed_in and request_state.payload:
+            user_id = request_state.payload.get('sub')
+            if user_id:
+                user_response = sdk.users.get_user(user_id=user_id)
+                if user_response:
+                    email = None
+                    if user_response.email_addresses:
+                        email = user_response.email_addresses[0].email_address
+                    name = f"{user_response.first_name or ''} {user_response.last_name or ''}".strip()
+                    return {
+                        'id': user_id,
+                        'email': email,
+                        'name': name or email,
+                        'image_url': user_response.image_url,
+                    }
+    except Exception:
+        pass
+    return None
 
-# Microsoft OAuth (multi-tenant, skip issuer validation)
-# For multi-tenant apps using /common, the issuer varies per tenant
-# so we must skip issuer validation
-microsoft = oauth.register(
-    name='microsoft',
-    client_id=os.getenv("MICROSOFT_CLIENT_ID"),
-    client_secret=os.getenv("MICROSOFT_CLIENT_SECRET"),
-    authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-    access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    jwks_uri='https://login.microsoftonline.com/common/discovery/v2.0/keys',
-    client_kwargs={
-        'scope': 'openid email profile',
-        'token_endpoint_auth_method': 'client_secret_post'
-    }
-)
 
-# Helper function to create tables if they don't exist
-with app.app_context():
-    db.create_all()
+def require_auth(f):
+    """Decorator: redirects to index if not authenticated."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_user_from_request()
+        if not user:
+            flash('Du måste logga in för att använda verktyget.')
+            return redirect(url_for('index'))
+        return f(*args, user=user, **kwargs)
+    return decorated_function
+
+
+def require_admin(f):
+    """Decorator: requires admin email."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_user_from_request()
+        if not user or user.get('email') != ADMIN_EMAIL:
+            flash('Du har inte behörighet till adminsidan.')
+            return redirect(url_for('index'))
+        return f(*args, user=user, **kwargs)
+    return decorated_function
+
 
 @app.route('/')
 def index():
-    user_session = session.get('user')
-    if not user_session:
-        return render_template('index.html', user=None)
-    
-    # Kontrollera om användaren är registrerad i databasen
-    user_id = session.get('user_id')
-    email = user_session.get('email', '').lower()
-    
-    if user_id:
-        user_db = User.query.get(user_id)
-    else:
-        user_db = User.query.filter_by(email=email).first()
-        if user_db:
-            session['user_id'] = user_db.id
-            
-    if user_db and not user_db.is_registered:
-        return redirect(url_for('register'))
-        
-    return render_template('index.html', user=user_session)
+    user = get_user_from_request()
+    return render_template(
+        'index.html',
+        user=user,
+        publishable_key=CLERK_PUBLISHABLE_KEY,
+        admin_email=ADMIN_EMAIL,
+    )
 
-# --- Google Login ---
-@app.route('/login/google')
-def login_google():
-    redirect_uri = url_for('auth_google', _external=True)
-    return google.authorize_redirect(redirect_uri)
-
-@app.route('/auth/google')
-def auth_google():
-    try:
-        token = google.authorize_access_token()
-        user_info = google.userinfo(token=token)
-        
-        provider_id = str(user_info.get('sub') or user_info.get('id'))
-        email = user_info.get('email')
-        if email:
-            email = email.lower()
-        
-        # 1. Försök hitta på Google ID
-        existing_user = User.query.filter_by(google_id=provider_id).first()
-        
-        # 2. Om inte hittad, försöka hitta på e-post (kontolänkning)
-        if not existing_user and email:
-            existing_user = User.query.filter_by(email=email).first()
-            if existing_user:
-                existing_user.google_id = provider_id
-        
-        # 3. Om fortfarande inte hittad, skapa ny
-        if not existing_user:
-            existing_user = User(
-                google_id=provider_id,
-                email=email,
-                name=user_info.get('name'),
-                picture=user_info.get('picture')
-            )
-            db.session.add(existing_user)
-        else:
-            # Uppdatera info
-            existing_user.name = user_info.get('name')
-            existing_user.picture = user_info.get('picture')
-        
-        log_entry = LoginLog(user=existing_user)
-        db.session.add(log_entry)
-        db.session.commit()
-
-        session['user'] = dict(user_info)
-        session['user_id'] = existing_user.id
-        
-        # Omdirigera till registrering om info saknas
-        if not existing_user.is_registered:
-            return redirect(url_for('register'))
-            
-        return redirect('/')
-    except Exception as e:
-        flash(f'Google-inloggning misslyckades: {str(e)}')
-        return redirect('/')
-
-# --- Microsoft Login ---
-@app.route('/login/microsoft')
-def login_microsoft():
-    redirect_uri = url_for('auth_microsoft', _external=True)
-    return microsoft.authorize_redirect(redirect_uri)
-
-@app.route('/auth/microsoft')
-def auth_microsoft():
-    try:
-        token = microsoft.authorize_access_token(claims_options={
-            'iss': {'essential': False},
-            'aud': {'essential': True}
-        })
-        
-        id_token = token.get('id_token')
-        if id_token:
-            import base64
-            import json
-            payload = id_token.split('.')[1]
-            payload += '=' * (4 - len(payload) % 4)
-            user_info = json.loads(base64.urlsafe_b64decode(payload))
-        else:
-            user_info = token.get('userinfo', {})
-        
-        provider_id = str(user_info.get('sub') or user_info.get('oid'))
-        email = user_info.get('email') or user_info.get('preferred_username')
-        if email:
-            email = email.lower()
-        
-        # 1. Försök hitta på Microsoft ID
-        existing_user = User.query.filter_by(microsoft_id=provider_id).first()
-        
-        # 2. Om inte hittad, försök hitta på e-post (kontolänkning)
-        if not existing_user and email:
-            existing_user = User.query.filter_by(email=email).first()
-            if existing_user:
-                existing_user.microsoft_id = provider_id
-        
-        # 3. Om fortfarande inte hittad, skapa ny
-        if not existing_user:
-            existing_user = User(
-                microsoft_id=provider_id,
-                email=email,
-                name=user_info.get('name'),
-                picture=user_info.get('picture')
-            )
-            db.session.add(existing_user)
-        else:
-            # Uppdatera info
-            existing_user.name = user_info.get('name')
-            existing_user.picture = user_info.get('picture')
-            if email:
-                existing_user.email = email
-        
-        log_entry = LoginLog(user=existing_user)
-        db.session.add(log_entry)
-        db.session.commit()
-
-        # Normalisera user_info för sessionen (så sessionen ser likadan ut oavsett provider om möjligt)
-        if 'email' not in user_info and 'preferred_username' in user_info:
-            user_info['email'] = user_info['preferred_username']
-
-        session['user'] = dict(user_info)
-        session['user_id'] = existing_user.id
-        
-        # Omdirigera till registrering om info saknas
-        if not existing_user.is_registered:
-            return redirect(url_for('register'))
-            
-        return redirect('/')
-    except Exception as e:
-        flash(f'Microsoft-inloggning misslyckades: {str(e)}')
-        return redirect('/')
-
-@app.route('/logout')
-def logout():
-    session.pop('user', None)
-    return redirect('/')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    user_session = session.get('user')
-    if not user_session:
-        return redirect('/')
-    
-    user_id = session.get('user_id')
-    email = user_session.get('email', '').lower()
-    
-    if user_id:
-        user_db = User.query.get(user_id)
-    else:
-        user_db = User.query.filter_by(email=email).first()
-        if user_db:
-            session['user_id'] = user_db.id
-    
-    if not user_db:
-        # Detta bör inte hända om man är inloggad, men för säkerhets skull
-        return redirect('/')
-        
-    if user_db.is_registered:
-        return redirect('/')
-        
-    if request.method == 'POST':
-        user_db.first_name = request.form.get('first_name')
-        user_db.last_name = request.form.get('last_name')
-        user_db.company = request.form.get('company')
-        user_db.is_registered = True
-        db.session.commit()
-        
-        flash('Tack! Din registrering är nu klar.')
-        return redirect('/')
-        
-    return render_template('register.html', email=email)
 
 @app.route('/admin')
-def admin():
-    user = session.get('user')
-    
-    # Enkel behörighetskontroll: Endast fredrikskonto@gmail.com får komma hit
-    if not user or user.get('email') != 'fredrikskonto@gmail.com':
-        flash('Du har inte behörighet till adminsidan.')
-        return redirect('/')
-    
-    # Hämta alla användare och räkna inloggningar
-    # Vi gör en enkel sats här, i större system skulle vi aggregera i SQL
-    all_users = User.query.all()
-    
-    users_data = []
-    for u in all_users:
-        login_count = LoginLog.query.filter_by(user_id=u.id).count()
-        last_login_entry = LoginLog.query.filter_by(user_id=u.id).order_by(LoginLog.timestamp.desc()).first()
-        last_login_time = last_login_entry.timestamp.strftime("%Y-%m-%d %H:%M") if last_login_entry else "Aldrig"
-        
-        users_data.append({
-            'name': f"{u.first_name} {u.last_name}" if u.is_registered else (u.name or "Ej registrerad"),
-            'email': u.email,
-            'company': u.company or "-",
-            'is_registered': u.is_registered,
-            'picture': u.picture,
-            'login_count': login_count,
-            'last_login': last_login_time,
-            'id': u.id,
-            'first_name': u.first_name or "",
-            'last_name': u.last_name or ""
-        })
-    
-    # Sortera på senaste inloggning
-    users_data.sort(key=lambda x: x['last_login'], reverse=True)
-    
-    return render_template('admin.html', users=users_data)
+@require_admin
+def admin(user):
+    """Admin page: lists all users via Clerk API."""
+    try:
+        users_response = sdk.users.list()
+        all_users = list(users_response) if users_response else []
+        users_data = []
+        for u in all_users:
+            email = u.email_addresses[0].email_address if u.email_addresses else '–'
+            name = f"{u.first_name or ''} {u.last_name or ''}".strip() or email
+            last_login = '–'
+            if u.last_sign_in_at:
+                ts = u.last_sign_in_at
+                if isinstance(ts, (int, float)):
+                    from datetime import timezone
+                    last_login = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M')
+                else:
+                    last_login = str(ts)
 
-@app.route('/admin/user/<int:user_id>/update', methods=['POST'])
-def admin_update_user(user_id):
-    user_session = session.get('user')
-    if not user_session or user_session.get('email') != 'fredrikskonto@gmail.com':
-        return "Unauthorized", 403
-        
-    user_db = User.query.get_or_404(user_id)
-    user_db.first_name = request.form.get('first_name')
-    user_db.last_name = request.form.get('last_name')
-    user_db.company = request.form.get('company')
-    db.session.commit()
-    
-    flash(f'Användare {user_db.email} har uppdaterats.')
-    return redirect(url_for('admin'))
+            users_data.append({
+                'name': name,
+                'email': email,
+                'image_url': u.image_url,
+                'last_login': last_login,
+                'created_at': datetime.fromtimestamp(
+                    u.created_at / 1000
+                ).strftime('%Y-%m-%d') if u.created_at else '–',
+            })
+        users_data.sort(key=lambda x: x['last_login'], reverse=True)
+    except Exception as e:
+        flash(f'Kunde inte hämta användare: {str(e)}')
+        users_data = []
 
-@app.route('/admin/user/<int:user_id>/reset', methods=['POST'])
-def admin_reset_user(user_id):
-    user_session = session.get('user')
-    if not user_session or user_session.get('email') != 'fredrikskonto@gmail.com':
-        return "Unauthorized", 403
-        
-    user_db = User.query.get_or_404(user_id)
-    user_db.is_registered = False
-    # Vi rensar även namnuppgifterna så de får fylla i dem på nytt
-    user_db.first_name = None
-    user_db.last_name = None
-    user_db.company = None
-    db.session.commit()
-    
-    flash(f'Användare {user_db.email} har återställts och måste registrera sig igen.')
-    return redirect(url_for('admin'))
+    return render_template('admin.html', users=users_data, user=user)
 
-import zipfile
 
 @app.route('/convert', methods=['POST'])
-def convert():
-    if not session.get('user'):
-        flash('Du måste logga in för att konvertera filer.')
-        return redirect('/')
-
+@require_auth
+def convert(user):
     xml_files = request.files.getlist('xml_files')
     csv_file = request.files.get('csv_file')
     include_csv = 'include_csv' in request.form
-    
-    # Hämta eventuella datum-overrides
     override_start = request.form.get('override_start')
     override_end = request.form.get('override_end')
-    
-    # XML files are required
+
     if not xml_files or all(f.filename == '' for f in xml_files):
         flash('Du måste ladda upp minst en XML-fil.')
         return redirect('/')
-    
-    # Filter out empty file inputs
+
     xml_files = [f for f in xml_files if f.filename != '']
-    
-    # CSV is optional - check if provided and has content
+
     csv_stream = None
     if csv_file and csv_file.filename != '':
         csv_stream = csv_file.stream
-        
+
     try:
         xml_streams = [f.stream for f in xml_files]
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
         if include_csv:
             xml_result, csv_result = convert_bygglosen_data(
-                xml_streams, csv_stream, include_csv=True, 
+                xml_streams, csv_stream, include_csv=True,
                 override_start=override_start, override_end=override_end
             )
-            
-            # Create ZIP in memory
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr(f"LOSEN_konverterad_{timestamp}.xml", xml_result.getvalue())
-                zf.writestr(f"LOSEN_konverterad_{timestamp}.csv", csv_result.getvalue())
-            
+                zf.writestr(f'LOSEN_konverterad_{timestamp}.xml', xml_result.getvalue())
+                zf.writestr(f'LOSEN_konverterad_{timestamp}.csv', csv_result.getvalue())
             zip_buffer.seek(0)
             return send_file(
                 zip_buffer,
                 as_attachment=True,
-                download_name=f"LOSEN_export_{timestamp}.zip",
+                download_name=f'LOSEN_export_{timestamp}.zip',
                 mimetype='application/zip'
             )
         else:
@@ -376,16 +171,16 @@ def convert():
                 xml_streams, csv_stream, include_csv=False,
                 override_start=override_start, override_end=override_end
             )
-            filename = f"LOSEN_konverterad_{timestamp}.xml"
             return send_file(
                 result_stream,
                 as_attachment=True,
-                download_name=filename,
+                download_name=f'LOSEN_konverterad_{timestamp}.xml',
                 mimetype='application/xml'
             )
     except Exception as e:
         flash(f'Ett fel uppstod vid konvertering: {str(e)}')
         return redirect('/')
+
 
 if __name__ == '__main__':
     app.run(debug=True)

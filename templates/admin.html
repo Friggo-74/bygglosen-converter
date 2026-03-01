@@ -1,282 +1,142 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bygglösen Admin</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin – Bygglösen Konverterare</title>
     <style>
-        :root {
-            --primary: #2563eb;
-            --surface: #ffffff;
-            --background: #f8fafc;
-            --text: #1e293b;
-        }
-
         body {
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background-color: var(--background);
-            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
             margin: 0;
             padding: 2rem;
-            line-height: 1.5;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            background: var(--surface);
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
 
         h1 {
-            margin-top: 0;
+            color: #2c3e50;
+            margin-bottom: 0.25rem;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        .back-link {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .flash-messages {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background-color: #fee;
+            border: 1px solid #fcc;
+            border-radius: 4px;
+            color: #c00;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 1rem;
-        }
-
-        th,
-        td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
         }
 
         th {
-            background-color: #f1f5f9;
+            background: #2c3e50;
+            color: white;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.85rem;
             font-weight: 600;
         }
 
-        tr:hover {
-            background-color: #f8fafc;
+        td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #eee;
+            font-size: 0.9rem;
+            vertical-align: middle;
         }
 
-        .user-cell {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        tr:last-child td {
+            border-bottom: none;
         }
 
-        .user-img {
-            width: 32px;
-            height: 32px;
+        tr:hover td {
+            background-color: #f8f9fa;
+        }
+
+        .avatar {
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
-            object-fit: cover;
+            vertical-align: middle;
+            margin-right: 8px;
         }
 
-        .btn {
-            display: inline-block;
-            background: var(--primary);
-            color: white;
-            padding: 0.5rem 1rem;
-            text-decoration: none;
-            border-radius: 6px;
-            margin-bottom: 1rem;
-            border: none;
-            cursor: pointer;
-            font-size: 0.875rem;
-            font-family: inherit;
-        }
-
-        .btn-secondary {
-            background: #64748b;
-        }
-
-        .btn-danger {
-            background: #ef4444;
-        }
-
-        .btn-sm {
-            padding: 4px 8px;
-            margin-bottom: 0;
-            font-size: 0.75rem;
-        }
-
-        .actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        /* Simple Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-
-        .modal-content {
-            background-color: white;
-            margin: 10% auto;
-            padding: 2rem;
-            border-radius: 12px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
-        }
-
-        .modal-header {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 4px;
-            font-weight: 500;
-            font-size: 0.875rem;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-
-        .alert-flash {
-            padding: 1rem;
-            background: #dcfce7;
-            color: #166534;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            border: 1px solid #bbf7d0;
+        .no-users {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h1>Admin Dashboard</h1>
-            <a href="/" class="btn btn-secondary">Tillbaka till start</a>
-        </div>
+    <a href="/" class="back-link">← Tillbaka till appen</a>
+    <h1>Adminpanel</h1>
+    <p class="subtitle">Inloggad som {{ user.name or user.email }} &nbsp;|&nbsp; Användare hämtas från Clerk</p>
 
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="flash-messages">
         {% for message in messages %}
-        <div class="alert-flash">{{ message }}</div>
+        <p>{{ message }}</p>
         {% endfor %}
-        {% endif %}
-        {% endwith %}
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Användare</th>
-                    <th>Email</th>
-                    <th>Företag</th>
-                    <th>Inloggningar</th>
-                    <th>Senast Inloggad</th>
-                    <th>Åtgärder</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>
-                        <div class="user-cell">
-                            {% if user.picture %}
-                            <img src="{{ user.picture }}" alt="" class="user-img">
-                            {% endif %}
-                            <div>
-                                {{ user.name }}
-                                {% if not user.is_registered %}
-                                <br><small style="color: #ef4444;">(Ej klar)</small>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </td>
-                    <td>{{ user.email }}</td>
-                    <td>{{ user.company }}</td>
-                    <td>{{ user.login_count }}</td>
-                    <td>{{ user.last_login }}</td>
-                    <td>
-                        <div class="actions">
-                            <button class="btn btn-secondary btn-sm" data-user-id="{{ user.id }}"
-                                data-first-name="{{ user.first_name }}" data-last-name="{{ user.last_name }}"
-                                data-company="{{ user.company }}" onclick="editUser(this)">Redigera</button>
-                            <form action="{{ url_for('admin_reset_user', user_id=user.id) }}" method="POST"
-                                onsubmit="return confirm('Är du säker på att du vill ta bort användarens registrering? De kommer behöva registrera sig igen vid nästa besök.')">
-                                <button type="submit" class="btn btn-danger btn-sm">Ta bort</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
     </div>
+    {% endif %}
+    {% endwith %}
 
-    <!-- Edit Modal -->
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Redigera Användare</h2>
-            </div>
-            <form id="editForm" method="POST">
-                <div class="form-group">
-                    <label>Förnamn</label>
-                    <input type="text" name="first_name" id="edit_first_name" required>
-                </div>
-                <div class="form-group">
-                    <label>Efternamn</label>
-                    <input type="text" name="last_name" id="edit_last_name" required>
-                </div>
-                <div class="form-group">
-                    <label>Företag</label>
-                    <input type="text" name="company" id="edit_company" required>
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
-                    <button type="submit" class="btn" style="flex: 1; margin-bottom: 0;">Spara</button>
-                    <button type="button" class="btn btn-secondary" style="flex: 1; margin-bottom: 0;"
-                        onclick="closeModal()">Avbryt</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        const modal = document.getElementById('editModal');
-        const form = document.getElementById('editForm');
-
-        function editUser(btn) {
-            const id = btn.getAttribute('data-user-id');
-            const firstName = btn.getAttribute('data-first-name');
-            const lastName = btn.getAttribute('data-last-name');
-            const company = btn.getAttribute('data-company');
-
-            form.action = `/admin/user/${id}/update`;
-            document.getElementById('edit_first_name').value = firstName || '';
-            document.getElementById('edit_last_name').value = lastName || '';
-            document.getElementById('edit_company').value = company !== '-' ? company : '';
-            modal.style.display = 'block';
-        }
-
-        function closeModal() {
-            modal.style.display = 'none';
-        }
-
-        window.onclick = function (event) {
-            if (event.target == modal) {
-                closeModal();
-            }
-        }
-    </script>
+    {% if users %}
+    <table>
+        <thead>
+            <tr>
+                <th>Användare</th>
+                <th>E-post</th>
+                <th>Senaste inloggning</th>
+                <th>Skapad</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>
+                    {% if u.image_url %}
+                    <img src="{{ u.image_url }}" alt="" class="avatar">
+                    {% endif %}
+                    {{ u.name }}
+                </td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.last_login }}</td>
+                <td>{{ u.created_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="no-users">Inga användare hittades.</div>
+    {% endif %}
 </body>
 
 </html>
