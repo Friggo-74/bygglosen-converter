@@ -1,0 +1,31 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Data and Logs
+*.log
+*.sqlite
+instance/
+kommunlankod-2026.xlsx
+Byggnads LänKommun_formatted (1).csv
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Other
+.gemini/
+.agent/
+README.md
+test_logic.py
+inspect_excel.py
