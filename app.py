@@ -30,26 +30,18 @@ sdk = Clerk(bearer_auth=CLERK_SECRET_KEY)
 def get_user_from_request():
     """Verify Clerk session token from request and return user info, or None."""
     try:
-        # Debug info for Railway logs
+        # Check if we have a token passed in the form data (fallback for short-lived cookies)
         token = request.form.get('clerk_token')
-        has_session_cookie = '__session' in request.cookies
         
         if token:
-            print(f"DEBUG: Found clerk_token in form (length: {len(token)})")
             request.headers = dict(request.headers)
             request.headers['Authorization'] = f"Bearer {token}"
-        else:
-            print(f"DEBUG: No clerk_token in form. Session cookie present: {has_session_cookie}")
 
         # Reconstruct the authorized party from env if provided
         authorized_party = os.getenv('CLERK_AUTHORIZED_PARTY', '')
-        
-        # Get request origin to help debugging
         origin = request.headers.get('Origin', '')
-        host = request.headers.get('Host', '')
-        print(f"DEBUG: Request Origin: {origin}, Host: {host}")
-
-        # authorized_parties should contain any valid origin/azp for the token
+        
+        # We prefer the explicitly configured party, but fall back to the origin
         authorized_parties = []
         if authorized_party:
             authorized_parties.append(authorized_party)
@@ -63,7 +55,6 @@ def get_user_from_request():
         
         if request_state.is_signed_in and request_state.payload:
             user_id = request_state.payload.get('sub')
-            print(f"DEBUG: Auth SUCCESS for user_id: {user_id}")
             if user_id:
                 user_response = sdk.users.get(user_id=user_id)
                 if user_response:
@@ -78,15 +69,8 @@ def get_user_from_request():
                         'name': name or email or "Användare",
                         'image_url': user_response.image_url,
                     }
-        else:
-            reason = getattr(request_state, 'reason', 'Unknown reason')
-            print(f"DEBUG: Auth FAILED. Reason: {reason}")
-            # Store reason in request environment to show in flash message
-            request.clerk_auth_reason = reason
-                
-    except Exception as e:
-        print(f"DEBUG: Exception in Clerk verification: {str(e)}")
-        request.clerk_auth_reason = str(e)
+    except Exception:
+        pass
         
     return None
 
@@ -97,8 +81,7 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         user = get_user_from_request()
         if not user:
-            reason = getattr(request, 'clerk_auth_reason', 'Ingen session hittades')
-            flash(f'Du måste logga in för att använda verktyget (Detaljer: {reason}).')
+            flash('Din session har gått ut. Vänligen logga in igen.')
             return redirect(url_for('index'))
         return f(*args, user=user, **kwargs)
     return decorated_function
@@ -110,8 +93,7 @@ def require_admin(f):
     def decorated_function(*args, **kwargs):
         user = get_user_from_request()
         if not user or user.get('email') != ADMIN_EMAIL:
-            reason = getattr(request, 'clerk_auth_reason', 'Ej admin eller ej inloggad')
-            flash(f'Du har inte behörighet till adminsidan ({reason}).')
+            flash('Du har inte behörighet till adminsidan.')
             return redirect(url_for('index'))
         return f(*args, user=user, **kwargs)
     return decorated_function

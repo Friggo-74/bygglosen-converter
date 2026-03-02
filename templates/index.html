@@ -353,8 +353,15 @@
                         // Force get a fresh token (JWT)
                         const token = await window.Clerk.session.getToken();
                         document.getElementById('clerk_token').value = token || '';
-                        // Now submit the form for real
+
+                        // Submit the form
                         convertForm.submit();
+
+                        // Visual feedback after submission
+                        setTimeout(() => {
+                            submitBtn.textContent = 'Klart!';
+                            submitBtn.style.backgroundColor = '#28a745';
+                        }, 500);
                     } catch (err) {
                         console.error('Token refresh failed:', err);
                         alert('Kunde inte verifiera din session. Försök ladda om sidan.');
@@ -362,6 +369,17 @@
                         submitBtn.textContent = originalText;
                     }
                 });
+
+                // Re-enable button when files change
+                const resetBtn = () => {
+                    const submitBtn = convertForm.querySelector('button[type="submit"]');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Konvertera och Ladda Ner';
+                    submitBtn.style.backgroundColor = '#007bff';
+                };
+
+                document.getElementById('xml_files').addEventListener('change', resetBtn);
+                document.getElementById('csv_file').addEventListener('change', resetBtn);
             }
 
             // Listen for session changes
