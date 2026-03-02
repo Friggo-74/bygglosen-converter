@@ -65,7 +65,7 @@ def get_user_from_request():
             user_id = request_state.payload.get('sub')
             print(f"DEBUG: Auth SUCCESS for user_id: {user_id}")
             if user_id:
-                user_response = sdk.users.get_user(user_id=user_id)
+                user_response = sdk.users.get(user_id=user_id)
                 if user_response:
                     email = user_response.email_addresses[0].email_address if user_response.email_addresses else None
                     first = user_response.first_name or ""
