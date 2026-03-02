@@ -47,7 +47,7 @@ def get_user_from_request():
         opts = AuthenticateRequestOptions(authorized_parties=[])
         
         # Verify the session token from the request
-        request_state = clerk_authenticate_request(sdk, request, opts)
+        request_state = sdk.authenticate_request(request, opts)
         
         if request_state.is_signed_in and request_state.payload:
             user_id = request_state.payload.get('sub')
