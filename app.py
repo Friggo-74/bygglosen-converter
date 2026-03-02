@@ -30,28 +30,44 @@ sdk = Clerk(bearer_auth=CLERK_SECRET_KEY)
 def get_user_from_request():
     """Verify Clerk session token from request and return user info, or None."""
     try:
+        # Reconstruct the authorized party from env if provided
         authorized_party = os.getenv('CLERK_AUTHORIZED_PARTY', '')
         opts = AuthenticateRequestOptions(
             authorized_parties=[authorized_party] if authorized_party else []
         )
+        
+        # Verify the session token from the request
         request_state = clerk_authenticate_request(sdk, request, opts)
+        
         if request_state.is_signed_in and request_state.payload:
             user_id = request_state.payload.get('sub')
             if user_id:
+                # Cache the user response if needed (optional but helpful)
                 user_response = sdk.users.get_user(user_id=user_id)
                 if user_response:
                     email = None
                     if user_response.email_addresses:
                         email = user_response.email_addresses[0].email_address
-                    name = f"{user_response.first_name or ''} {user_response.last_name or ''}".strip()
+                    
+                    # Construct full name
+                    first = user_response.first_name or ""
+                    last = user_response.last_name or ""
+                    name = f"{first} {last}".strip()
+                    
                     return {
                         'id': user_id,
                         'email': email,
-                        'name': name or email,
+                        'name': name or email or "Användare",
                         'image_url': user_response.image_url,
                     }
-    except Exception:
-        pass
+        else:
+            # If not signed in, log the reason for debugging
+            if hasattr(request_state, 'reason'):
+                print(f"Clerk Auth Failed: {request_state.reason}")
+                
+    except Exception as e:
+        print(f"Error in Clerk verification: {str(e)}")
+        
     return None
 
 
