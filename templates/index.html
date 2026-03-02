@@ -232,6 +232,7 @@
             </div>
 
             <form action="/convert" method="post" enctype="multipart/form-data" id="convert-form">
+                <input type="hidden" name="clerk_token" id="clerk_token">
                 <div class="privacy-notice">
                     <p>
                         <strong>Din data är din</strong><br>
@@ -337,6 +338,31 @@
                 await window.Clerk.signOut();
                 window.location.reload();
             });
+
+            // Form submission: get fresh token
+            const convertForm = document.getElementById('convert-form');
+            if (convertForm) {
+                convertForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    const submitBtn = convertForm.querySelector('button[type="submit"]');
+                    const originalText = submitBtn.textContent;
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Autentiserar...';
+
+                    try {
+                        // Force get a fresh token (JWT)
+                        const token = await window.Clerk.session.getToken();
+                        document.getElementById('clerk_token').value = token || '';
+                        // Now submit the form for real
+                        convertForm.submit();
+                    } catch (err) {
+                        console.error('Token refresh failed:', err);
+                        alert('Kunde inte verifiera din session. Försök ladda om sidan.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    }
+                });
+            }
 
             // Listen for session changes
             window.Clerk.addListener(({ user }) => {
