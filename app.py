@@ -43,8 +43,20 @@ def get_user_from_request():
 
         # Reconstruct the authorized party from env if provided
         authorized_party = os.getenv('CLERK_AUTHORIZED_PARTY', '')
-        # For debugging, we use empty authorized_parties to be more permissive
-        opts = AuthenticateRequestOptions(authorized_parties=[])
+        
+        # Get request origin to help debugging
+        origin = request.headers.get('Origin', '')
+        host = request.headers.get('Host', '')
+        print(f"DEBUG: Request Origin: {origin}, Host: {host}")
+
+        # authorized_parties should contain any valid origin/azp for the token
+        authorized_parties = []
+        if authorized_party:
+            authorized_parties.append(authorized_party)
+        if origin:
+            authorized_parties.append(origin)
+            
+        opts = AuthenticateRequestOptions(authorized_parties=authorized_parties)
         
         # Verify the session token from the request
         request_state = sdk.authenticate_request(request, opts)
