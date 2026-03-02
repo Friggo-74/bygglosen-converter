@@ -382,6 +382,22 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
     new_root = ET.Element('Lista_lonegranskning')
     
     for lankod, person_list in grouped_persons.items():
+        # FILTER: Exclude persons with Fordelningstal 0 from XML
+        xml_person_list = []
+        for p in person_list:
+            ft_elem = p.find('Fordelningstal')
+            ft_text = ft_elem.text.strip() if ft_elem is not None and ft_elem.text else "0"
+            try:
+                # Include only if > 0
+                if float(ft_text) > 0:
+                    xml_person_list.append(p)
+            except (ValueError, TypeError):
+                pass
+        
+        # If no persons left in this group, skip the entire Lonegranskning block for XML
+        if not xml_person_list:
+            continue
+
         # Skapa en ny <Lonegranskning> för varje unik länkod
         lg_block = ET.SubElement(new_root, 'Lonegranskning')
         
@@ -406,7 +422,7 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
             
         # Skapa <Personer> blocket och lägg in alla personer som hör hit
         personer_block = ET.SubElement(lg_block, 'Personer')
-        for p in person_list:
+        for p in xml_person_list:
             # Ta bort det interna attributet innan vi lägger till personen i det nya blocket
             if '_original_lankod' in p.attrib:
                 del p.attrib['_original_lankod']
