@@ -1,6 +1,6 @@
 # Bygglösen Konverterare
 
-Flask-baserad webbapplikation för konvertering av lönegranskningsfiler från Konteks-format till Byggnads-format. Hanterar sammanslagning av multipla XML-filer, länkodsmatchning och export till XML och CSV.
+Flask-baserad webbapplikation för konvertering av Bygglösenfiler från Konteks-format till Byggnads-format. Hanterar sammanslagning av multipla XML-filer, länkodsmatchning och export till XML och CSV.
 
 ---
 
@@ -20,7 +20,7 @@ Flask-baserad webbapplikation för konvertering av lönegranskningsfiler från K
 
 ## Vad applikationen gör
 
-Användaren laddar upp en eller flera **XML-filer** (Konteks Lönegranskning-format) och eventuellt en **CSV-fil** med personnummer och länkoder. Applikationen:
+Användaren laddar upp en eller flera **Bygglösenfiler** (Konteks XML-format) och eventuellt en **CSV-fil** med personnummer och länkoder. Applikationen:
 
 1. Parsar alla XML-filer och slår ihop poster för samma personnummer
 2. Matchar personnummer mot CSV-filen för att berika med länkod, yrkeskod och fördelningstal
@@ -33,7 +33,7 @@ Användaren laddar upp en eller flera **XML-filer** (Konteks Lönegranskning-for
 
 | Fil | Format | Obligatorisk |
 |-----|--------|-------------|
-| Lönegranskning XML (Konteks) | XML | Ja (1 eller flera) |
+| Bygglösenfiler (Konteks XML) | XML | Ja (1 eller flera) |
 | Person/Länkod CSV | Semikolonseparerad CSV | Nej |
 
 ### Utdata
