@@ -242,10 +242,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="xml_files">Konteks XML-filer</label>
+                    <label for="xml_files">Bygglösenfiler från Kontek</label>
                     <input type="file" name="xml_files" id="xml_files" accept=".xml" multiple required
                         onchange="checkXMLDates(this)">
-                    <div class="hint">Ladda upp en eller flera Lonegranskning XML-filer.</div>
+                    <div class="hint">Ladda upp en eller flera Bygglösenfiler (XML).</div>
                 </div>
 
                 <!-- Datumkontroll -->
@@ -274,8 +274,8 @@
                     <label for="csv_file">Person/Län CSV-fil <span
                             style="color: #999; font-weight: normal;">(valfritt)</span></label>
                     <input type="file" name="csv_file" id="csv_file" accept=".csv">
-                    <div class="hint">Ladda upp CSV med 'Personnr' och 'Län och kommun'. Om du hoppar över denna används
-                        uppgifterna som redan finns i XML-filerna.</div>
+                    <div class="hint">Ladda upp CSV med 'Län och kommun' från Konteks Rapportgenerator. Om du hoppar
+                        över denna används uppgifterna som redan finns i XML-filerna.</div>
                 </div>
 
                 <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-bottom: 2rem;">
