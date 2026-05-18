@@ -284,6 +284,14 @@
                     <label for="include_csv" style="margin-bottom: 0; cursor: pointer;">Ladda även ner som CSV</label>
                 </div>
 
+                <div id="warnings-section" style="display: none; background: #fef2f2; border: 1px solid #f87171; border-radius: 6px; padding: 16px; margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 0.95rem; color: #991b1b; margin-bottom: 8px;">Personer med ofullständig data</h3>
+                    <p style="font-size: 0.85rem; color: #b91c1c; margin-bottom: 12px;">Följande personer saknar fördelningstal eller avtalsområde och kommer eventuellt filtreras bort eller sakna viktig information i den konverterade filen.</p>
+                    <ul id="warnings-list" style="font-size: 0.85rem; color: #991b1b; padding-left: 20px; margin-bottom: 0; max-height: 150px; overflow-y: auto;">
+                        <!-- Listfylls av JS -->
+                    </ul>
+                </div>
+
                 <button type="submit">Konvertera och Ladda Ner</button>
             </form>
         </div>
@@ -342,6 +350,8 @@
             // Form submission: get fresh token
             const convertForm = document.getElementById('convert-form');
             if (convertForm) {
+                let hasAnalyzed = false;
+                
                 convertForm.addEventListener('submit', async function (e) {
                     e.preventDefault();
                     const submitBtn = convertForm.querySelector('button[type="submit"]');
@@ -353,6 +363,43 @@
                         // Force get a fresh token (JWT)
                         const token = await window.Clerk.session.getToken();
                         document.getElementById('clerk_token').value = token || '';
+                        
+                        if (!hasAnalyzed) {
+                            submitBtn.textContent = 'Analyserar...';
+                            const formData = new FormData(convertForm);
+                            
+                            const analyzeRes = await fetch('/analyze', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            
+                            if (analyzeRes.ok) {
+                                const data = await analyzeRes.json();
+                                if (data.warnings && data.warnings.length > 0) {
+                                    // Visa varningar
+                                    const warningsList = document.getElementById('warnings-list');
+                                    warningsList.innerHTML = '';
+                                    data.warnings.forEach(w => {
+                                        const li = document.createElement('li');
+                                        li.textContent = `${w.namn} (${w.pnr}) saknar: ${w.missing.join(', ')}`;
+                                        warningsList.appendChild(li);
+                                    });
+                                    document.getElementById('warnings-section').style.display = 'block';
+                                    
+                                    hasAnalyzed = true;
+                                    submitBtn.textContent = 'Godkänn och ladda ner ändå';
+                                    submitBtn.style.backgroundColor = '#d97706';
+                                    submitBtn.disabled = false;
+                                    return; // Stoppa här så vi inte laddar ner
+                                }
+                            } else {
+                                const errData = await analyzeRes.json().catch(() => ({}));
+                                console.error("Analys fel:", errData);
+                                // Fortsätt med nedladdning om analysen kraschar så vi inte blockerar
+                            }
+                        }
+
+                        submitBtn.textContent = 'Konverterar...';
 
                         // Submit the form
                         convertForm.submit();
@@ -361,17 +408,23 @@
                         setTimeout(() => {
                             submitBtn.textContent = 'Klart!';
                             submitBtn.style.backgroundColor = '#28a745';
-                        }, 500);
+                            // Reset state for next use
+                            hasAnalyzed = false;
+                            document.getElementById('warnings-section').style.display = 'none';
+                        }, 1000);
                     } catch (err) {
-                        console.error('Token refresh failed:', err);
-                        alert('Kunde inte verifiera din session. Försök ladda om sidan.');
+                        console.error('Submit failed:', err);
+                        alert('Kunde inte genomföra förfrågan. Försök ladda om sidan.');
                         submitBtn.disabled = false;
                         submitBtn.textContent = originalText;
+                        hasAnalyzed = false;
                     }
                 });
 
                 // Re-enable button when files change
                 const resetBtn = () => {
+                    hasAnalyzed = false;
+                    document.getElementById('warnings-section').style.display = 'none';
                     const submitBtn = convertForm.querySelector('button[type="submit"]');
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Konvertera och Ladda Ner';

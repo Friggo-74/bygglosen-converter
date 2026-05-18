@@ -147,6 +147,30 @@ def admin(user):
     return render_template('admin.html', users=users_data, user=user)
 
 
+@app.route('/analyze', methods=['POST'])
+@require_auth
+def analyze(user):
+    from flask import jsonify
+    xml_files = request.files.getlist('xml_files')
+    csv_file = request.files.get('csv_file')
+    
+    if not xml_files or all(f.filename == '' for f in xml_files):
+        return jsonify({'error': 'Inga XML-filer uppladdade.'}), 400
+
+    xml_files = [f for f in xml_files if f.filename != '']
+    csv_stream = None
+    if csv_file and csv_file.filename != '':
+        csv_stream = csv_file.stream
+        
+    try:
+        from converter import analyze_bygglosen_data
+        xml_streams = [f.stream for f in xml_files]
+        warnings = analyze_bygglosen_data(xml_streams, csv_stream)
+        return jsonify({'warnings': warnings})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/convert', methods=['POST'])
 @require_auth
 def convert(user):

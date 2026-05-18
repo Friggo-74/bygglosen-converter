@@ -105,23 +105,7 @@ def generate_csv_data(header_data, lankod_namn_map, grouped_persons):
             
     return output.getvalue().encode('utf-8-sig')
 
-def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", include_csv=False, override_start=None, override_end=None):
-    """
-    Konverterar data från XML och CSV streams.
-    xml_file_streams: list of file-like objects (binary or text depending on parsing needs)
-    csv_file_stream: file-like object (text mode preferable) - OPTIONAL
-    
-    Om csv_file_stream är None, används länkoderna som redan finns i XML-filerna.
-    
-    include_csv: Om True, returnera både XML och CSV streams.
-    
-    override_start/end: Valfria datum (str eller None) som ersätter LoneperiodStartdatum/Slutdatum.
-    
-    Returnerar antingen:
-    - xml_stream (om include_csv=False)
-    - (xml_stream, csv_stream) (om include_csv=True)
-    """
-    
+def _parse_and_group_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", override_start=None, override_end=None):
     # Ladda upp länskods-mappning en gång
     # I en riktig prod-app borde detta cachas, men här är det ok
     lankod_namn_map = load_lankod_map()
@@ -377,6 +361,79 @@ def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lanko
         
         # Lägg till personen i rätt lista
         grouped_persons[target_kod].append(person)
+
+    return header_data, lankod_namn_map, grouped_persons
+
+def analyze_bygglosen_data(xml_file_streams, csv_file_stream=None):
+    header_data, _, grouped_persons = _parse_and_group_data(
+        xml_file_streams, csv_file_stream
+    )
+    
+    warnings = []
+    
+    # Check if header is missing avtalsomrade
+    header_avtal = header_data.get('Avtalsomrade', '').strip() if header_data else ''
+    
+    for lankod, person_list in grouped_persons.items():
+        for person in person_list:
+            missing = []
+            
+            # Check fordelningstal
+            ft_elem = person.find('Fordelningstal')
+            ft_text = ft_elem.text.strip() if ft_elem is not None and ft_elem.text else "0"
+            try:
+                if float(ft_text) <= 0:
+                    missing.append("Fördelningstal")
+            except (ValueError, TypeError):
+                missing.append("Fördelningstal")
+                
+            # Check avtalsomrade
+            ao_elem = person.find('Avtalsomrade')
+            has_ao = False
+            if ao_elem is not None and ao_elem.text and ao_elem.text.strip():
+                has_ao = True
+            elif header_avtal:
+                # Fallback to header
+                has_ao = True
+                
+            if not has_ao:
+                missing.append("Avtalsområde")
+                
+            if missing:
+                pnr = person.findtext('Personnummer') or 'Okänt'
+                fornamn = person.findtext('Fornamn') or ''
+                efternamn = person.findtext('Efternamn') or ''
+                namn = f"{fornamn} {efternamn}".strip()
+                if not namn:
+                    namn = "Okänt namn"
+                    
+                warnings.append({
+                    "pnr": clean_personnr(pnr),
+                    "namn": namn,
+                    "missing": missing
+                })
+                
+    return warnings
+
+def convert_bygglosen_data(xml_file_streams, csv_file_stream=None, default_lankod="1293", include_csv=False, override_start=None, override_end=None):
+    """
+    Konverterar data från XML och CSV streams.
+    xml_file_streams: list of file-like objects (binary or text depending on parsing needs)
+    csv_file_stream: file-like object (text mode preferable) - OPTIONAL
+    
+    Om csv_file_stream är None, används länkoderna som redan finns i XML-filerna.
+    
+    include_csv: Om True, returnera både XML och CSV streams.
+    
+    override_start/end: Valfria datum (str eller None) som ersätter LoneperiodStartdatum/Slutdatum.
+    
+    Returnerar antingen:
+    - xml_stream (om include_csv=False)
+    - (xml_stream, csv_stream) (om include_csv=True)
+    """
+    header_data, lankod_namn_map, grouped_persons = _parse_and_group_data(
+        xml_file_streams, csv_file_stream, default_lankod, override_start, override_end
+    )
 
     # 5. Bygg upp den nya XML-strukturen
     new_root = ET.Element('Lista_lonegranskning')
