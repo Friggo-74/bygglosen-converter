@@ -401,9 +401,11 @@ def analyze_bygglosen_data(xml_file_streams, csv_file_stream=None):
                 
             if missing:
                 pnr = person.findtext('Personnummer') or 'Okänt'
-                fornamn = person.findtext('Fornamn') or ''
-                efternamn = person.findtext('Efternamn') or ''
-                namn = f"{fornamn} {efternamn}".strip()
+                namn = person.findtext('Namn')
+                if not namn:
+                    fornamn = person.findtext('Fornamn') or ''
+                    efternamn = person.findtext('Efternamn') or ''
+                    namn = f"{fornamn} {efternamn}".strip()
                 if not namn:
                     namn = "Okänt namn"
                     
